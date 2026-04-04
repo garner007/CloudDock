@@ -1,17 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Zap, RefreshCw, Plus, Trash2, X } from 'lucide-react';
+import { Zap, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ServiceUnavailable, { isProOnlyError } from '../components/ServiceUnavailable';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import CreateModal from '../components/CreateModal';
+import { useAwsResource } from '../hooks/useAwsResource';
+import { useAwsAction } from '../hooks/useAwsAction';
+
+const ELASTICACHE_STATUS_MAP = {
+  available: 'green', creating: 'yellow', deleting: 'red', modifying: 'yellow',
+};
 
 export default function ElastiCachePage({ showNotification }) {
-  const [clusters, setClusters] = useState([]);
   const { confirmDialog, requestConfirm } = useConfirm();
+  const [clusters, setClusters] = useState([]);
   const [repGroups, setRepGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState('clusters');
   const [showCreate, setShowCreate] = useState(false);
-  const [newCluster, setNewCluster] = useState({ id: '', engine: 'redis', nodeType: 'cache.t3.micro', numNodes: 1 });
   const [proError, setProError] = useState(false);
 
   const load = useCallback(async () => {
@@ -33,23 +41,21 @@ export default function ElastiCachePage({ showNotification }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const createCluster = async () => {
-    if (!newCluster.id) return;
-    try {
-      const { ElastiCacheClient, CreateCacheClusterCommand } = await import('@aws-sdk/client-elasticache');
-      const client = new ElastiCacheClient(getConfig());
-      await client.send(new CreateCacheClusterCommand({
-        CacheClusterId: newCluster.id,
-        Engine: newCluster.engine,
-        CacheNodeType: newCluster.nodeType,
-        NumCacheNodes: newCluster.numNodes,
-      }));
-      showNotification(`Cluster "${newCluster.id}" creation initiated`);
-      setShowCreate(false);
-      setNewCluster({ id: '', engine: 'redis', nodeType: 'cache.t3.micro', numNodes: 1 });
-      load();
-    } catch (e) { showNotification(e.message, 'error'); }
-  };
+  const createClusterFn = useCallback(async (values) => {
+    const { ElastiCacheClient, CreateCacheClusterCommand } = await import('@aws-sdk/client-elasticache');
+    const client = new ElastiCacheClient(getConfig());
+    await client.send(new CreateCacheClusterCommand({
+      CacheClusterId: values.id,
+      Engine: values.engine,
+      CacheNodeType: values.nodeType,
+      NumCacheNodes: parseInt(values.numNodes) || 1,
+    }));
+  }, []);
+
+  const { execute: createCluster } = useAwsAction(createClusterFn, {
+    showNotification,
+    onSuccess: () => { setShowCreate(false); load(); },
+  });
 
   const deleteCluster = (id) => {
     requestConfirm({
@@ -64,18 +70,32 @@ export default function ElastiCachePage({ showNotification }) {
         showNotification('Cluster deletion initiated');
         load();
         } catch (e) { showNotification(e.message, 'error'); }
-
       },
     });
   };
 
-  const statusBadge = (s) => {
-    const map = { available: 'badge-green', creating: 'badge-yellow', deleting: 'badge-red', modifying: 'badge-yellow' };
-    return map[s?.toLowerCase()] || 'badge-gray';
-  };
-
   const engineBadge = (e) => e?.toLowerCase() === 'redis' ? 'badge-red' : 'badge-blue';
-  const fmtDate = (d) => d ? new Date(d).toLocaleString() : '-';
+
+  const clusterColumns = [
+    { key: 'CacheClusterId', label: 'Cluster ID', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+    { key: 'Engine', label: 'Engine', render: (v, row) => <span className={`badge ${engineBadge(v)}`}>{v} {row.EngineVersion}</span> },
+    { key: 'CacheClusterStatus', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={ELASTICACHE_STATUS_MAP} /> },
+    { key: 'CacheNodeType', label: 'Node type', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{v}</span> },
+    { key: 'NumCacheNodes', label: 'Nodes' },
+    { key: 'ConfigurationEndpoint', label: 'Endpoint', render: (v, row) => {
+      const ep = v ? `${v.Address}:${v.Port}` :
+        row.CacheNodes?.[0]?.Endpoint ? `${row.CacheNodes[0].Endpoint.Address}:${row.CacheNodes[0].Endpoint.Port}` : '-';
+      return <span className="mono" style={{ fontSize: 11, color: 'var(--aws-cyan)' }}>{ep}</span>;
+    }},
+  ];
+
+  const repGroupColumns = [
+    { key: 'ReplicationGroupId', label: 'Group ID', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+    { key: 'Description', label: 'Description', render: (v) => <span style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{v}</span> },
+    { key: 'Status', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={ELASTICACHE_STATUS_MAP} /> },
+    { key: 'ClusterEnabled', label: 'Cluster mode', render: (v) => <span className={`badge ${v ? 'badge-green' : 'badge-gray'}`}>{v ? 'Enabled' : 'Disabled'}</span> },
+    { key: 'MemberClusters', label: 'Members', render: (v) => v?.length || 0 },
+  ];
 
   if (proError) return <ServiceUnavailable serviceName="ElastiCache" />;
 
@@ -100,101 +120,46 @@ export default function ElastiCachePage({ showNotification }) {
         ))}
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : tab === 'clusters' ? (
-          clusters.length === 0 ? (
-            <div className="empty-state">
-              <Zap size={40} /><h3>No clusters</h3>
-              <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create cluster</button>
-            </div>
-          ) : (
-            <table className="data-table">
-              <thead><tr><th>Cluster ID</th><th>Engine</th><th>Status</th><th>Node type</th><th>Nodes</th><th>Endpoint</th><th></th></tr></thead>
-              <tbody>
-                {clusters.map(c => (
-                  <tr key={c.CacheClusterId}>
-                    <td style={{ fontWeight: 500 }}>{c.CacheClusterId}</td>
-                    <td><span className={`badge ${engineBadge(c.Engine)}`}>{c.Engine} {c.EngineVersion}</span></td>
-                    <td><span className={`badge ${statusBadge(c.CacheClusterStatus)}`}>{c.CacheClusterStatus}</span></td>
-                    <td className="mono" style={{ fontSize: 11 }}>{c.CacheNodeType}</td>
-                    <td>{c.NumCacheNodes}</td>
-                    <td className="mono" style={{ fontSize: 11, color: 'var(--aws-cyan)' }}>
-                      {c.ConfigurationEndpoint ? `${c.ConfigurationEndpoint.Address}:${c.ConfigurationEndpoint.Port}` :
-                       c.CacheNodes?.[0]?.Endpoint ? `${c.CacheNodes[0].Endpoint.Address}:${c.CacheNodes[0].Endpoint.Port}` : '-'}
-                    </td>
-                    <td><button className="btn btn-danger btn-sm" onClick={() => deleteCluster(c.CacheClusterId)}><Trash2 size={11} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        ) : (
-          repGroups.length === 0 ? (
-            <div className="empty-state"><Zap size={40} /><h3>No replication groups</h3></div>
-          ) : (
-            <table className="data-table">
-              <thead><tr><th>Group ID</th><th>Description</th><th>Status</th><th>Cluster mode</th><th>Members</th></tr></thead>
-              <tbody>
-                {repGroups.map(r => (
-                  <tr key={r.ReplicationGroupId}>
-                    <td style={{ fontWeight: 500 }}>{r.ReplicationGroupId}</td>
-                    <td style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{r.Description}</td>
-                    <td><span className={`badge ${statusBadge(r.Status)}`}>{r.Status}</span></td>
-                    <td><span className={`badge ${r.ClusterEnabled ? 'badge-green' : 'badge-gray'}`}>{r.ClusterEnabled ? 'Enabled' : 'Disabled'}</span></td>
-                    <td>{r.MemberClusters?.length || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        )}
-      </div>
-
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create Cache Cluster</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Cluster ID</label>
-                <input className="input" style={{ width: '100%' }} value={newCluster.id}
-                  onChange={e => setNewCluster({ ...newCluster, id: e.target.value })} placeholder="my-redis-cluster" autoFocus />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Engine</label>
-                <select className="input" style={{ width: '100%' }} value={newCluster.engine}
-                  onChange={e => setNewCluster({ ...newCluster, engine: e.target.value })}>
-                  <option value="redis">Redis</option>
-                  <option value="memcached">Memcached</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Node Type</label>
-                <select className="input" style={{ width: '100%' }} value={newCluster.nodeType}
-                  onChange={e => setNewCluster({ ...newCluster, nodeType: e.target.value })}>
-                  {['cache.t2.micro','cache.t3.micro','cache.t3.small','cache.t3.medium','cache.m5.large','cache.r5.large'].map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Number of Nodes</label>
-                <input className="input" style={{ width: '100%' }} type="number" min={1} max={20} value={newCluster.numNodes}
-                  onChange={e => setNewCluster({ ...newCluster, numNodes: parseInt(e.target.value) || 1 })} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createCluster}>Create Cluster</button>
-            </div>
-          </div>
-        </div>
+      {tab === 'clusters' && (
+        <DataTable
+          columns={clusterColumns}
+          data={clusters}
+          loading={loading}
+          rowKey="CacheClusterId"
+          emptyIcon={Zap}
+          emptyTitle="No clusters"
+          actions={(row) => (
+            <button className="btn btn-danger btn-sm" onClick={() => deleteCluster(row.CacheClusterId)}><Trash2 size={11} /></button>
+          )}
+        />
       )}
-          {confirmDialog}
+
+      {tab === 'replication groups' && (
+        <DataTable
+          columns={repGroupColumns}
+          data={repGroups}
+          loading={loading}
+          rowKey="ReplicationGroupId"
+          emptyIcon={Zap}
+          emptyTitle="No replication groups"
+        />
+      )}
+
+      <CreateModal
+        title="Create Cache Cluster"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={(values) => createCluster(values)}
+        fields={[
+          { name: 'id', label: 'Cluster ID', required: true, placeholder: 'my-redis-cluster' },
+          { name: 'engine', label: 'Engine', type: 'select', options: ['redis', 'memcached'], defaultValue: 'redis' },
+          { name: 'nodeType', label: 'Node Type', type: 'select', options: ['cache.t2.micro','cache.t3.micro','cache.t3.small','cache.t3.medium','cache.m5.large','cache.r5.large'], defaultValue: 'cache.t3.micro' },
+          { name: 'numNodes', label: 'Number of Nodes', type: 'number', defaultValue: '1' },
+        ]}
+        submitLabel="Create Cluster"
+      />
+
+      {confirmDialog}
     </div>
   );
 }

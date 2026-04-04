@@ -1,13 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Workflow, RefreshCw, Plus, Trash2, X, Play, Eye } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import { useAwsResource } from '../hooks/useAwsResource';
+import { useAwsAction } from '../hooks/useAwsAction';
+import { fmtDate } from '../utils/formatters';
+
+const EXEC_STATUS_MAP = {
+  RUNNING: 'blue', SUCCEEDED: 'green', FAILED: 'red', TIMED_OUT: 'red', ABORTED: 'gray',
+};
 
 export default function StepFunctionsPage({ showNotification }) {
-  const [machines, setMachines] = useState([]);
   const { confirmDialog, requestConfirm } = useConfirm();
   const [executions, setExecutions] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [execLoading, setExecLoading] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showExec, setShowExec] = useState(false);
@@ -25,28 +33,28 @@ export default function StepFunctionsPage({ showNotification }) {
   });
   const [execInput, setExecInput] = useState('{}');
 
-  const loadMachines = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { SFNClient, ListStateMachinesCommand } = await import('@aws-sdk/client-sfn');
-      const client = new SFNClient(getConfig());
-      const res = await client.send(new ListStateMachinesCommand({ maxResults: 100 }));
-      setMachines(res.stateMachines || []);
-    } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
+  const loadMachinesFn = useCallback(async () => {
+    const { SFNClient, ListStateMachinesCommand } = await import('@aws-sdk/client-sfn');
+    const client = new SFNClient(getConfig());
+    const res = await client.send(new ListStateMachinesCommand({ maxResults: 100 }));
+    return res.stateMachines || [];
+  }, []);
+
+  const handleError = useCallback((e) => {
+    showNotification(e.message, 'error');
   }, [showNotification]);
 
-  useEffect(() => { loadMachines(); }, [loadMachines]);
+  const { items: machines, loading, refresh: loadMachines } = useAwsResource(loadMachinesFn, { onError: handleError });
 
   const loadExecutions = useCallback(async (arn) => {
-    setLoading(true);
+    setExecLoading(true);
     try {
       const { SFNClient, ListExecutionsCommand } = await import('@aws-sdk/client-sfn');
       const client = new SFNClient(getConfig());
       const res = await client.send(new ListExecutionsCommand({ stateMachineArn: arn, maxResults: 50 }));
       setExecutions(res.executions || []);
     } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
+    finally { setExecLoading(false); }
   }, [showNotification]);
 
   const createMachine = async () => {
@@ -81,7 +89,6 @@ export default function StepFunctionsPage({ showNotification }) {
         if (selectedMachine?.stateMachineArn === arn) setSelectedMachine(null);
         loadMachines();
         } catch (e) { showNotification(e.message, 'error'); }
-
       },
     });
   };
@@ -90,7 +97,7 @@ export default function StepFunctionsPage({ showNotification }) {
     try {
       const { SFNClient, StartExecutionCommand } = await import('@aws-sdk/client-sfn');
       const client = new SFNClient(getConfig());
-      const res = await client.send(new StartExecutionCommand({
+      await client.send(new StartExecutionCommand({
         stateMachineArn: selectedMachine.stateMachineArn,
         input: execInput,
       }));
@@ -110,9 +117,21 @@ export default function StepFunctionsPage({ showNotification }) {
   };
 
   const openMachine = (m) => { setSelectedMachine(m); loadExecutions(m.stateMachineArn); };
-  const fmtDate = (d) => d ? new Date(d).toLocaleString() : '-';
-  const statusColor = (s) => ({ RUNNING: 'badge-blue', SUCCEEDED: 'badge-green', FAILED: 'badge-red', TIMED_OUT: 'badge-red', ABORTED: 'badge-gray' }[s] || 'badge-gray');
   const getName = (arn) => arn?.split(':').pop() || arn;
+
+  const executionColumns = [
+    { key: 'executionArn', label: 'Execution name', render: (v) => <span style={{ fontWeight: 500, fontSize: 12 }}>{getName(v)}</span> },
+    { key: 'status', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={EXEC_STATUS_MAP} /> },
+    { key: 'startDate', label: 'Started', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+    { key: 'stopDate', label: 'Stopped', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
+
+  const machineColumns = [
+    { key: 'name', label: 'Name', render: (v, row) => <button className="link-btn" onClick={(e) => { e.stopPropagation(); openMachine(row); }}>{v}</button> },
+    { key: 'type', label: 'Type', render: (v) => <span className="badge badge-blue">{v}</span> },
+    { key: 'stateMachineArn', label: 'ARN', mono: true, render: (v) => <span style={{ fontSize: 10, color: 'var(--aws-text-muted)' }}>{v}</span> },
+    { key: 'creationDate', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
 
   if (selectedMachine) {
     return (
@@ -125,35 +144,23 @@ export default function StepFunctionsPage({ showNotification }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-secondary btn-sm" onClick={() => { setSelectedMachine(null); setExecutions([]); }}>← Machines</button>
             <button className="btn btn-secondary btn-sm" onClick={() => loadExecutions(selectedMachine.stateMachineArn)}>
-              <RefreshCw size={13} className={loading ? 'spin' : ''} />
+              <RefreshCw size={13} className={execLoading ? 'spin' : ''} />
             </button>
             <button className="btn btn-primary" onClick={() => setShowExec(true)}><Play size={13} /> Start execution</button>
           </div>
         </div>
 
-        <div className="card">
-          {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-          : executions.length === 0 ? (
-            <div className="empty-state"><Workflow size={40} /><h3>No executions</h3>
-              <button className="btn btn-primary" onClick={() => setShowExec(true)}><Play size={13} /> Start execution</button>
-            </div>
-          ) : (
-            <table className="data-table">
-              <thead><tr><th>Execution name</th><th>Status</th><th>Started</th><th>Stopped</th><th></th></tr></thead>
-              <tbody>
-                {executions.map(e => (
-                  <tr key={e.executionArn}>
-                    <td style={{ fontWeight: 500, fontSize: 12 }}>{getName(e.executionArn)}</td>
-                    <td><span className={`badge ${statusColor(e.status)}`}>{e.status}</span></td>
-                    <td style={{ fontSize: 12 }}>{fmtDate(e.startDate)}</td>
-                    <td style={{ fontSize: 12 }}>{fmtDate(e.stopDate)}</td>
-                    <td><button className="btn btn-secondary btn-sm" onClick={() => getExecDetail(e)}><Eye size={11} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <DataTable
+          columns={executionColumns}
+          data={executions}
+          loading={execLoading}
+          rowKey="executionArn"
+          emptyIcon={Workflow}
+          emptyTitle="No executions"
+          actions={(row) => (
+            <button className="btn btn-secondary btn-sm" onClick={() => getExecDetail(row)}><Eye size={11} /></button>
           )}
-        </div>
+        />
 
         {showExec && (
           <div className="modal-overlay" onClick={() => setShowExec(false)}>
@@ -186,7 +193,7 @@ export default function StepFunctionsPage({ showNotification }) {
               </div>
               <div className="modal-body">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <div><div className="form-label">Status</div><span className={`badge ${statusColor(execDetail.status)}`}>{execDetail.status}</span></div>
+                  <div><div className="form-label">Status</div><StatusBadge status={execDetail.status} colorMap={EXEC_STATUS_MAP} /></div>
                   <div><div className="form-label">Started</div><span style={{ fontSize: 12 }}>{fmtDate(execDetail.startDate)}</span></div>
                 </div>
                 {execDetail.input && <><div className="form-label" style={{ marginBottom: 6 }}>Input</div><pre className="detail-json">{(() => { try { return JSON.stringify(JSON.parse(execDetail.input), null, 2); } catch { return execDetail.input; } })()}</pre></>}
@@ -196,8 +203,8 @@ export default function StepFunctionsPage({ showNotification }) {
             </div>
           </div>
         )}
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
 
@@ -214,34 +221,20 @@ export default function StepFunctionsPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : machines.length === 0 ? (
-          <div className="empty-state"><Workflow size={40} /><h3>No state machines</h3>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create state machine</button>
+      <DataTable
+        columns={machineColumns}
+        data={machines}
+        loading={loading}
+        rowKey="stateMachineArn"
+        emptyIcon={Workflow}
+        emptyTitle="No state machines"
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => openMachine(row)}>Executions</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteMachine(row.stateMachineArn, row.name)}><Trash2 size={11} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Name</th><th>Type</th><th>ARN</th><th>Created</th><th></th></tr></thead>
-            <tbody>
-              {machines.map(m => (
-                <tr key={m.stateMachineArn}>
-                  <td><button className="link-btn" onClick={() => openMachine(m)}>{m.name}</button></td>
-                  <td><span className="badge badge-blue">{m.type}</span></td>
-                  <td className="mono" style={{ fontSize: 10, color: 'var(--aws-text-muted)' }}>{m.stateMachineArn}</td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(m.creationDate)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openMachine(m)}>Executions</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteMachine(m.stateMachineArn, m.name)}><Trash2 size={11} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
@@ -275,7 +268,7 @@ export default function StepFunctionsPage({ showNotification }) {
         </div>
       )}
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;font-weight:500;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

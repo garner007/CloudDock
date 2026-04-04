@@ -1,48 +1,55 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Container, RefreshCw, Plus, X, ChevronRight } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Container, RefreshCw, Plus } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ServiceUnavailable, { isProOnlyError } from '../components/ServiceUnavailable';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import CreateModal from '../components/CreateModal';
+import { useAwsResource } from '../hooks/useAwsResource';
+import { useAwsAction } from '../hooks/useAwsAction';
+import { fmtDate } from '../utils/formatters';
+
+const ECS_STATUS_MAP = {
+  ACTIVE: 'green', INACTIVE: 'gray', DRAINING: 'yellow',
+  RUNNING: 'green', STOPPED: 'red', PENDING: 'yellow',
+};
 
 export default function ECSPage({ showNotification }) {
-  const [clusters, setClusters] = useState([]);
   const [clusterDetails, setClusterDetails] = useState({});
   const [services, setServices] = useState([]);
   const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState(null);
   const [tab, setTab] = useState('services');
   const [showCreate, setShowCreate] = useState(false);
-  const [newCluster, setNewCluster] = useState('');
   const [proError, setProError] = useState(false);
 
   const loadClusters = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { ECSClient, ListClustersCommand, DescribeClustersCommand } = await import('@aws-sdk/client-ecs');
-      const client = new ECSClient(getConfig());
-      const list = await client.send(new ListClustersCommand({ maxResults: 100 }));
-      const arns = list.clusterArns || [];
-      if (arns.length > 0) {
-        const desc = await client.send(new DescribeClustersCommand({ clusters: arns }));
-        const details = {};
-        (desc.clusters || []).forEach(c => { details[c.clusterArn] = c; });
-        setClusterDetails(details);
-        setClusters(desc.clusters || []);
-      } else {
-        setClusters([]);
-      }
-    } catch (e) {
-      if (isProOnlyError(e)) { setProError(true); return; }
-      showNotification(e.message, 'error');
-    } finally { setLoading(false); }
+    const { ECSClient, ListClustersCommand, DescribeClustersCommand } = await import('@aws-sdk/client-ecs');
+    const client = new ECSClient(getConfig());
+    const list = await client.send(new ListClustersCommand({ maxResults: 100 }));
+    const arns = list.clusterArns || [];
+    if (arns.length > 0) {
+      const desc = await client.send(new DescribeClustersCommand({ clusters: arns }));
+      const details = {};
+      (desc.clusters || []).forEach(c => { details[c.clusterArn] = c; });
+      setClusterDetails(details);
+      return desc.clusters || [];
+    }
+    return [];
+  }, []);
+
+  const handleError = useCallback((e) => {
+    if (isProOnlyError(e)) { setProError(true); return; }
+    showNotification(e.message, 'error');
   }, [showNotification]);
 
-  useEffect(() => { loadClusters(); }, [loadClusters]);
+  const { items: clusters, loading, refresh: loadClustersRefresh } = useAwsResource(loadClusters, { onError: handleError });
 
   const openCluster = async (cluster) => {
     setSelectedCluster(cluster);
     setTab('services');
-    setLoading(true);
+    setDetailLoading(true);
     try {
       const { ECSClient, ListServicesCommand, DescribeServicesCommand, ListTasksCommand, DescribeTasksCommand } = await import('@aws-sdk/client-ecs');
       const client = new ECSClient(getConfig());
@@ -59,25 +66,47 @@ export default function ECSPage({ showNotification }) {
       setServices(svcs.services || []);
       setTasks(tsks.tasks || []);
     } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
+    finally { setDetailLoading(false); }
   };
 
-  const createCluster = async () => {
-    if (!newCluster) return;
-    try {
-      const { ECSClient, CreateClusterCommand } = await import('@aws-sdk/client-ecs');
-      const client = new ECSClient(getConfig());
-      await client.send(new CreateClusterCommand({ clusterName: newCluster }));
-      showNotification(`Cluster "${newCluster}" created`);
-      setShowCreate(false);
-      setNewCluster('');
-      loadClusters();
-    } catch (e) { showNotification(e.message, 'error'); }
-  };
+  const createClusterFn = useCallback(async (name) => {
+    const { ECSClient, CreateClusterCommand } = await import('@aws-sdk/client-ecs');
+    const client = new ECSClient(getConfig());
+    await client.send(new CreateClusterCommand({ clusterName: name }));
+  }, []);
 
-  const statusBadge = (s) => ({ ACTIVE: 'badge-green', INACTIVE: 'badge-gray', DRAINING: 'badge-yellow', RUNNING: 'badge-green', STOPPED: 'badge-red', PENDING: 'badge-yellow' }[s] || 'badge-gray');
+  const { execute: createCluster } = useAwsAction(createClusterFn, {
+    showNotification,
+    onSuccess: () => { setShowCreate(false); loadClustersRefresh(); },
+  });
+
   const getShortName = (arn) => arn?.split('/').pop() || arn || '-';
-  const fmtDate = (d) => d ? new Date(d).toLocaleString() : '-';
+
+  const clusterColumns = [
+    { key: 'clusterName', label: 'Cluster name', render: (v, row) => <button className="link-btn" onClick={(e) => { e.stopPropagation(); openCluster(row); }}>{v}</button> },
+    { key: 'status', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={ECS_STATUS_MAP} /> },
+    { key: 'runningTasksCount', label: 'Running tasks' },
+    { key: 'activeServicesCount', label: 'Services' },
+    { key: 'registeredContainerInstancesCount', label: 'Instances' },
+  ];
+
+  const serviceColumns = [
+    { key: 'serviceName', label: 'Service name', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+    { key: 'status', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={ECS_STATUS_MAP} /> },
+    { key: 'runningCount', label: 'Running / Desired', render: (v, row) => `${row.runningCount} / ${row.desiredCount}` },
+    { key: 'launchType', label: 'Launch type', render: (v) => <span className="badge badge-blue">{v || 'FARGATE'}</span> },
+    { key: 'taskDefinition', label: 'Task def', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{getShortName(v)}</span> },
+    { key: 'createdAt', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
+
+  const taskColumns = [
+    { key: 'taskArn', label: 'Task ID', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{getShortName(v)}</span> },
+    { key: 'desiredStatus', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={ECS_STATUS_MAP} /> },
+    { key: 'lastStatus', label: 'Last status', render: (v) => <StatusBadge status={v} colorMap={ECS_STATUS_MAP} /> },
+    { key: 'cpu', label: 'CPU / Memory', render: (v, row) => <span style={{ fontSize: 12 }}>{v || '-'} / {row.memory || '-'}</span> },
+    { key: 'taskDefinitionArn', label: 'Task def', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{getShortName(v)}</span> },
+    { key: 'startedAt', label: 'Started', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
 
   if (selectedCluster) {
     return (
@@ -86,13 +115,13 @@ export default function ECSPage({ showNotification }) {
           <div>
             <div className="page-title"><Container size={20} /> {selectedCluster.clusterName}</div>
             <div className="page-subtitle">
-              <span className={`badge ${statusBadge(selectedCluster.status)}`} style={{ marginRight: 8 }}>{selectedCluster.status}</span>
-              {selectedCluster.runningTasksCount} running · {selectedCluster.pendingTasksCount} pending · {selectedCluster.activeServicesCount} services
+              <StatusBadge status={selectedCluster.status} colorMap={ECS_STATUS_MAP} />
+              {' '}{selectedCluster.runningTasksCount} running · {selectedCluster.pendingTasksCount} pending · {selectedCluster.activeServicesCount} services
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-secondary btn-sm" onClick={() => setSelectedCluster(null)}>← Clusters</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => openCluster(selectedCluster)}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
+            <button className="btn btn-secondary btn-sm" onClick={() => openCluster(selectedCluster)}><RefreshCw size={13} className={detailLoading ? 'spin' : ''} /></button>
           </div>
         </div>
 
@@ -112,53 +141,27 @@ export default function ECSPage({ showNotification }) {
         </div>
 
         {tab === 'services' && (
-          <div className="card">
-            {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-            : services.length === 0 ? (
-              <div className="empty-state"><Container size={40} /><h3>No services</h3><p>Deploy services to this cluster.</p></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Service name</th><th>Status</th><th>Running / Desired</th><th>Launch type</th><th>Task def</th><th>Created</th></tr></thead>
-                <tbody>
-                  {services.map(s => (
-                    <tr key={s.serviceArn}>
-                      <td style={{ fontWeight: 500 }}>{s.serviceName}</td>
-                      <td><span className={`badge ${statusBadge(s.status)}`}>{s.status}</span></td>
-                      <td>{s.runningCount} / {s.desiredCount}</td>
-                      <td><span className="badge badge-blue">{s.launchType || 'FARGATE'}</span></td>
-                      <td className="mono" style={{ fontSize: 11 }}>{getShortName(s.taskDefinition)}</td>
-                      <td style={{ fontSize: 12 }}>{fmtDate(s.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={serviceColumns}
+            data={services}
+            loading={detailLoading}
+            rowKey="serviceArn"
+            emptyIcon={Container}
+            emptyTitle="No services"
+            emptyDescription="Deploy services to this cluster."
+          />
         )}
 
         {tab === 'tasks' && (
-          <div className="card">
-            {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-            : tasks.length === 0 ? (
-              <div className="empty-state"><Container size={40} /><h3>No tasks</h3><p>No tasks are currently running in this cluster.</p></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Task ID</th><th>Status</th><th>Last status</th><th>CPU / Memory</th><th>Task def</th><th>Started</th></tr></thead>
-                <tbody>
-                  {tasks.map(t => (
-                    <tr key={t.taskArn}>
-                      <td className="mono" style={{ fontSize: 11 }}>{getShortName(t.taskArn)}</td>
-                      <td><span className={`badge ${statusBadge(t.desiredStatus)}`}>{t.desiredStatus}</span></td>
-                      <td><span className={`badge ${statusBadge(t.lastStatus)}`}>{t.lastStatus}</span></td>
-                      <td style={{ fontSize: 12 }}>{t.cpu || '-'} / {t.memory || '-'}</td>
-                      <td className="mono" style={{ fontSize: 11 }}>{getShortName(t.taskDefinitionArn)}</td>
-                      <td style={{ fontSize: 12 }}>{fmtDate(t.startedAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={taskColumns}
+            data={tasks}
+            loading={detailLoading}
+            rowKey="taskArn"
+            emptyIcon={Container}
+            emptyTitle="No tasks"
+            emptyDescription="No tasks are currently running in this cluster."
+          />
         )}
       </div>
     );
@@ -174,59 +177,34 @@ export default function ECSPage({ showNotification }) {
           <div className="page-subtitle">{clusters.length} cluster{clusters.length !== 1 ? 's' : ''}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={loadClusters}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
+          <button className="btn btn-secondary btn-sm" onClick={loadClustersRefresh}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create cluster</button>
         </div>
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : clusters.length === 0 ? (
-          <div className="empty-state">
-            <Container size={40} /><h3>No clusters</h3>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create cluster</button>
-          </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Cluster name</th><th>Status</th><th>Running tasks</th><th>Services</th><th>Instances</th><th></th></tr></thead>
-            <tbody>
-              {clusters.map(c => (
-                <tr key={c.clusterArn}>
-                  <td><button className="link-btn" onClick={() => openCluster(c)}>{c.clusterName}</button></td>
-                  <td><span className={`badge ${statusBadge(c.status)}`}>{c.status}</span></td>
-                  <td>{c.runningTasksCount}</td>
-                  <td>{c.activeServicesCount}</td>
-                  <td>{c.registeredContainerInstancesCount}</td>
-                  <td><button className="btn btn-secondary btn-sm" onClick={() => openCluster(c)}>Explore</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <DataTable
+        columns={clusterColumns}
+        data={clusters}
+        loading={loading}
+        rowKey="clusterArn"
+        emptyIcon={Container}
+        emptyTitle="No clusters"
+        actions={(row) => (
+          <button className="btn btn-secondary btn-sm" onClick={() => openCluster(row)}>Explore</button>
         )}
-      </div>
+      />
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create ECS Cluster</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Cluster Name</label>
-                <input className="input" style={{ width: '100%' }} value={newCluster}
-                  onChange={e => setNewCluster(e.target.value)} placeholder="my-cluster" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && createCluster()} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createCluster}>Create Cluster</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create ECS Cluster"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={(values) => createCluster(values.clusterName)}
+        fields={[
+          { name: 'clusterName', label: 'Cluster Name', required: true, placeholder: 'my-cluster' },
+        ]}
+        submitLabel="Create Cluster"
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
     </div>
   );

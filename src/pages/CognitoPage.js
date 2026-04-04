@@ -8,17 +8,23 @@ import { getConfig } from '../services/awsClients';
 import ServiceUnavailable, { isProOnlyError } from '../components/ServiceUnavailable';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
 import CopyButton from '../components/CopyButton';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import CreateModal from '../components/CreateModal';
+import { useAwsResource } from '../hooks/useAwsResource';
+import { useAwsAction } from '../hooks/useAwsAction';
+import { fmtDate } from '../utils/formatters';
 
 const getAttr = (user, name) => user.Attributes?.find(a => a.Name === name)?.Value || '';
-const fmtDate = (d) => d ? new Date(d).toLocaleString() : '—';
-const statusColor = (s) => ({
-  CONFIRMED: 'badge-green',
-  FORCE_CHANGE_PASSWORD: 'badge-yellow',
-  RESET_REQUIRED: 'badge-yellow',
-  UNCONFIRMED: 'badge-gray',
-  ARCHIVED: 'badge-red',
-  COMPROMISED: 'badge-red',
-}[s] || 'badge-gray');
+
+const USER_STATUS_MAP = {
+  CONFIRMED: 'green',
+  FORCE_CHANGE_PASSWORD: 'yellow',
+  RESET_REQUIRED: 'yellow',
+  UNCONFIRMED: 'gray',
+  ARCHIVED: 'red',
+  COMPROMISED: 'red',
+};
 
 function UserDetailPanel({ user, poolId, onClose, onRefresh, showNotification }) {
   const [tab, setTab]               = useState('attributes');
@@ -160,7 +166,7 @@ function UserDetailPanel({ user, poolId, onClose, onRefresh, showNotification })
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <span className={`badge ${statusColor(user.UserStatus)}`}>{user.UserStatus}</span>
+              <StatusBadge status={user.UserStatus} colorMap={USER_STATUS_MAP} />
               <span className={`badge ${user.Enabled ? 'badge-green' : 'badge-red'}`}>{user.Enabled ? 'Enabled' : 'Disabled'}</span>
             </div>
           </div>
@@ -256,7 +262,7 @@ function UserDetailPanel({ user, poolId, onClose, onRefresh, showNotification })
                         }} />
                     ) : (
                       <div className="kv-value" style={{ fontFamily: attr.Name === 'sub' ? 'var(--font-mono)' : undefined }}>
-                        {attr.Value || '—'}
+                        {attr.Value || '\u2014'}
                         {attr.Value && <CopyButton value={attr.Value} size={11} />}
                       </div>
                     )}
@@ -330,7 +336,7 @@ function UserDetailPanel({ user, poolId, onClose, onRefresh, showNotification })
                 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--aws-text-muted)' }}>{label}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 12, wordBreak: 'break-all', fontFamily: label === 'User Sub (ID)' ? 'var(--font-mono)' : undefined }}>{value || '—'}</span>
+                    <span style={{ fontSize: 12, wordBreak: 'break-all', fontFamily: label === 'User Sub (ID)' ? 'var(--font-mono)' : undefined }}>{value || '\u2014'}</span>
                     {value && <CopyButton value={value} size={11} />}
                   </div>
                 </div>
@@ -358,7 +364,6 @@ function UserDetailPanel({ user, poolId, onClose, onRefresh, showNotification })
 export default function CognitoPage({ showNotification, setPageTrail }) {
   const [proError, setProError]     = useState(false);
   const { confirmDialog, requestConfirm } = useConfirm();
-  const [pools, setPools]           = useState([]);
   const [users, setUsers]           = useState([]);
   const [groups, setGroups]         = useState([]);
   const [loading, setLoading]       = useState(false);
@@ -367,24 +372,22 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
   const [tab, setTab]               = useState('users');
   const [showCreatePool, setShowCreatePool] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
-  const [newPool, setNewPool]       = useState({ name: '' });
   const [newUser, setNewUser]       = useState({ username: '', email: '', password: 'Temp@1234!' });
   const [search, setSearch]         = useState('');
 
-  const loadPools = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { CognitoIdentityProviderClient, ListUserPoolsCommand } = await import('@aws-sdk/client-cognito-identity-provider');
-      const client = new CognitoIdentityProviderClient(getConfig());
-      const res = await client.send(new ListUserPoolsCommand({ MaxResults: 60 }));
-      setPools(res.UserPools || []);
-    } catch (e) {
-      if (isProOnlyError(e)) { setProError(true); return; }
-      showNotification(e.message, 'error');
-    } finally { setLoading(false); }
+  const loadPoolsFn = useCallback(async () => {
+    const { CognitoIdentityProviderClient, ListUserPoolsCommand } = await import('@aws-sdk/client-cognito-identity-provider');
+    const client = new CognitoIdentityProviderClient(getConfig());
+    const res = await client.send(new ListUserPoolsCommand({ MaxResults: 60 }));
+    return res.UserPools || [];
+  }, []);
+
+  const handlePoolError = useCallback((e) => {
+    if (isProOnlyError(e)) { setProError(true); return; }
+    showNotification(e.message, 'error');
   }, [showNotification]);
 
-  useEffect(() => { loadPools(); }, [loadPools]);
+  const { items: pools, loading: poolsLoading, refresh: loadPools } = useAwsResource(loadPoolsFn, { onError: handlePoolError });
 
   const loadUsers = useCallback(async (poolId) => {
     setLoading(true);
@@ -410,7 +413,6 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
     setSelectedPool(pool); setSelectedUser(null);
     setTab('users'); setSearch('');
     loadUsers(pool.Id); loadGroups(pool.Id);
-    // Update breadcrumb: Cognito › pool-name
     setPageTrail?.([{
       label: pool.Name,
       onNavigateToService: () => { setSelectedPool(null); setSelectedUser(null); setPageTrail?.([]); },
@@ -419,7 +421,6 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
 
   const openUser = (user) => {
     setSelectedUser(user);
-    // Update breadcrumb: Cognito › pool-name › username
     setPageTrail?.([
       {
         label: selectedPool?.Name || 'Pool',
@@ -432,16 +433,16 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
     ]);
   };
 
-  const createPool = async () => {
-    if (!newPool.name) return;
-    try {
-      const { CognitoIdentityProviderClient, CreateUserPoolCommand } = await import('@aws-sdk/client-cognito-identity-provider');
-      const client = new CognitoIdentityProviderClient(getConfig());
-      await client.send(new CreateUserPoolCommand({ PoolName: newPool.name }));
-      showNotification(`Pool "${newPool.name}" created`);
-      setShowCreatePool(false); setNewPool({ name: '' }); loadPools();
-    } catch (e) { showNotification(e.message, 'error'); }
-  };
+  const createPoolFn = useCallback(async (name) => {
+    const { CognitoIdentityProviderClient, CreateUserPoolCommand } = await import('@aws-sdk/client-cognito-identity-provider');
+    const client = new CognitoIdentityProviderClient(getConfig());
+    await client.send(new CreateUserPoolCommand({ PoolName: name }));
+  }, []);
+
+  const { execute: createPool } = useAwsAction(createPoolFn, {
+    showNotification,
+    onSuccess: () => { setShowCreatePool(false); loadPools(); },
+  });
 
   const createUser = async () => {
     if (!newUser.username) return;
@@ -494,6 +495,37 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
     getAttr(u, 'email').toLowerCase().includes(search.toLowerCase())
   );
 
+  const userColumns = [
+    { key: 'Username', label: 'Username', render: (v, row) => (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--aws-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+          {v.charAt(0).toUpperCase()}
+        </div>
+        <span style={{ fontWeight: 500, color: 'var(--aws-cyan)' }}>{v}</span>
+        <ChevronRight size={12} color="var(--aws-text-muted)" />
+      </div>
+    )},
+    { key: '_email', label: 'Email', render: (v, row) => <span style={{ fontSize: 12 }}>{getAttr(row, 'email') || '\u2014'}</span> },
+    { key: 'UserStatus', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={USER_STATUS_MAP} /> },
+    { key: 'Enabled', label: 'Enabled', render: (v) => <span className={`badge ${v ? 'badge-green' : 'badge-red'}`}>{v ? 'Enabled' : 'Disabled'}</span> },
+    { key: 'UserCreateDate', label: 'Created', render: (v) => <span style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{fmtDate(v)}</span> },
+  ];
+
+  const groupColumns = [
+    { key: 'GroupName', label: 'Group name', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+    { key: 'Description', label: 'Description', render: (v) => <span style={{ color: 'var(--aws-text-muted)', fontSize: 12 }}>{v || '\u2014'}</span> },
+    { key: 'Precedence', label: 'Precedence', render: (v) => v ?? '\u2014' },
+    { key: 'CreationDate', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
+
+  const poolColumns = [
+    { key: 'Name', label: 'Pool name', render: (v) => (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, color: 'var(--aws-cyan)' }}>{v} <ChevronRight size={13} color="var(--aws-text-muted)" /></div>
+    )},
+    { key: 'Id', label: 'Pool ID', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{v}</span> },
+    { key: 'CreationDate', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
+
   if (selectedPool) {
     return (
       <div className="fade-in" style={{ position: 'relative' }}>
@@ -527,64 +559,30 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
               </div>
               <span style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>Click a row to view details</span>
             </div>
-            <div className="card">
-              {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-              : filteredUsers.length === 0 ? (
-                <div className="empty-state">
-                  <Users size={40} /><h3>No users</h3>
-                  <button className="btn btn-primary" onClick={() => setShowCreateUser(true)}><Plus size={14} /> Create user</button>
-                </div>
-              ) : (
-                <table className="data-table">
-                  <thead><tr><th>Username</th><th>Email</th><th>Status</th><th>Enabled</th><th>Created</th><th></th></tr></thead>
-                  <tbody>
-                    {filteredUsers.map(u => (
-                      <tr key={u.Username} style={{ cursor: 'pointer' }} onClick={() => openUser(u)} className="hover-row">
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--aws-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                              {u.Username.charAt(0).toUpperCase()}
-                            </div>
-                            <span style={{ fontWeight: 500, color: 'var(--aws-cyan)' }}>{u.Username}</span>
-                            <ChevronRight size={12} color="var(--aws-text-muted)" />
-                          </div>
-                        </td>
-                        <td style={{ fontSize: 12 }}>{getAttr(u, 'email') || '—'}</td>
-                        <td><span className={`badge ${statusColor(u.UserStatus)}`}>{u.UserStatus}</span></td>
-                        <td><span className={`badge ${u.Enabled ? 'badge-green' : 'badge-red'}`}>{u.Enabled ? 'Enabled' : 'Disabled'}</span></td>
-                        <td style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{fmtDate(u.UserCreateDate)}</td>
-                        <td onClick={e => e.stopPropagation()}>
-                          <button className="btn btn-danger btn-sm" onClick={() => deleteUser(u.Username)}><Trash2 size={11} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <DataTable
+              columns={userColumns}
+              data={filteredUsers}
+              loading={loading}
+              rowKey="Username"
+              onRowClick={(row) => openUser(row)}
+              emptyIcon={Users}
+              emptyTitle="No users"
+              actions={(row) => (
+                <button className="btn btn-danger btn-sm" onClick={() => deleteUser(row.Username)}><Trash2 size={11} /></button>
               )}
-            </div>
+            />
           </>
         )}
 
         {tab === 'groups' && (
-          <div className="card">
-            {groups.length === 0 ? (
-              <div className="empty-state"><Shield size={40} /><h3>No groups</h3></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Group name</th><th>Description</th><th>Precedence</th><th>Created</th></tr></thead>
-                <tbody>
-                  {groups.map(g => (
-                    <tr key={g.GroupName}>
-                      <td style={{ fontWeight: 500 }}>{g.GroupName}</td>
-                      <td style={{ color: 'var(--aws-text-muted)', fontSize: 12 }}>{g.Description || '—'}</td>
-                      <td>{g.Precedence ?? '—'}</td>
-                      <td style={{ fontSize: 12 }}>{fmtDate(g.CreationDate)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={groupColumns}
+            data={groups}
+            loading={false}
+            rowKey="GroupName"
+            emptyIcon={Shield}
+            emptyTitle="No groups"
+          />
         )}
 
         {tab === 'details' && (
@@ -633,7 +631,6 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
             poolId={selectedPool.Id}
             onClose={() => {
               setSelectedUser(null);
-              // Restore trail to just pool level
               setPageTrail?.([{
                 label: selectedPool.Name,
                 onNavigateToService: () => { setSelectedPool(null); setPageTrail?.([]); },
@@ -660,60 +657,35 @@ export default function CognitoPage({ showNotification, setPageTrail }) {
           <div className="page-subtitle">{pools.length} pool{pools.length !== 1 ? 's' : ''}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={loadPools}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
+          <button className="btn btn-secondary btn-sm" onClick={loadPools}><RefreshCw size={13} className={poolsLoading ? 'spin' : ''} /></button>
           <button className="btn btn-primary" onClick={() => setShowCreatePool(true)}><Plus size={14} /> Create pool</button>
         </div>
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : pools.length === 0 ? (
-          <div className="empty-state"><Users size={40} /><h3>No user pools</h3>
-            <button className="btn btn-primary" onClick={() => setShowCreatePool(true)}><Plus size={14} /> Create pool</button>
-          </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Pool name</th><th>Pool ID</th><th>Created</th><th></th></tr></thead>
-            <tbody>
-              {pools.map(p => (
-                <tr key={p.Id} style={{ cursor: 'pointer' }} onClick={() => openPool(p)} className="hover-row">
-                  <td style={{ fontWeight: 500, color: 'var(--aws-cyan)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{p.Name} <ChevronRight size={13} color="var(--aws-text-muted)" /></div>
-                  </td>
-                  <td className="mono" style={{ fontSize: 11 }}>{p.Id}</td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(p.CreationDate)}</td>
-                  <td onClick={e => e.stopPropagation()}>
-                    <button className="btn btn-danger btn-sm" onClick={() => deletePool(p.Id, p.Name)}><Trash2 size={11} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <DataTable
+        columns={poolColumns}
+        data={pools}
+        loading={poolsLoading}
+        rowKey="Id"
+        onRowClick={(row) => openPool(row)}
+        emptyIcon={Users}
+        emptyTitle="No user pools"
+        actions={(row) => (
+          <button className="btn btn-danger btn-sm" onClick={() => deletePool(row.Id, row.Name)}><Trash2 size={11} /></button>
         )}
-      </div>
+      />
 
-      {showCreatePool && (
-        <div className="modal-overlay" onClick={() => setShowCreatePool(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create User Pool</span>
-              <button className="close-btn" onClick={() => setShowCreatePool(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Pool Name</label>
-                <input className="input" style={{ width: '100%' }} value={newPool.name}
-                  onChange={e => setNewPool({ ...newPool, name: e.target.value })} placeholder="my-user-pool" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && createPool()} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreatePool(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createPool}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create User Pool"
+        open={showCreatePool}
+        onClose={() => setShowCreatePool(false)}
+        onSubmit={(values) => createPool(values.poolName)}
+        fields={[
+          { name: 'poolName', label: 'Pool Name', required: true, placeholder: 'my-user-pool' },
+        ]}
+        submitLabel="Create"
+      />
+
       {confirmDialog}
       <style>{`.hover-row:hover { background: rgba(255,255,255,0.03); }`}</style>
     </div>
