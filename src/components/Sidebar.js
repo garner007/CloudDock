@@ -138,7 +138,7 @@ export default function Sidebar({ currentService, onNavigate, collapsed, onToggl
         </button>
       </nav>
 
-      <button className="sidebar-toggle" onClick={onToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+      <button className="sidebar-toggle" onClick={onToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
         <span className={`sidebar-toggle-icon ${collapsed ? 'flipped' : ''}`}>‹</span>
         {!collapsed && <span>Collapse</span>}
       </button>

@@ -94,7 +94,7 @@ export default function DataTable({
       )}
 
       <div className="card">
-        <table className="data-table">
+        <table className="data-table" aria-busy={loading}>
           <thead>
             <tr>
               {columns.map(col => (

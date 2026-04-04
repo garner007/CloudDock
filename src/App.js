@@ -199,11 +199,13 @@ export default function App() {
         onNavigate={navigateTo}
       />
 
-      {notification && (
-        <div className={`notification notification-${notification.type}`}>
-          {notification.type === 'success' ? '✓' : '✕'} {notification.msg}
-        </div>
-      )}
+      <div aria-live="polite" aria-atomic="true" className="notification-region">
+        {notification && (
+          <div className={`notification notification-${notification.type}`} role="alert">
+            {notification.type === 'success' ? '✓' : '✕'} {notification.msg}
+          </div>
+        )}
+      </div>
     </div>
     </SettingsProvider>
   );

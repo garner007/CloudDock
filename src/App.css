@@ -19,18 +19,26 @@
   animation: fadeIn 0.15s ease;
 }
 
-/* Notification toast */
-.notification {
+/* Notification live region */
+.notification-region {
   position: fixed;
   bottom: 24px;
   right: 24px;
+  z-index: 9999;
+}
+
+/* Notification toast */
+.notification {
   padding: 12px 20px;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
-  z-index: 9999;
-  animation: fadeIn 0.2s ease;
+  animation: slideInNotification 0.25s ease;
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+@keyframes slideInNotification {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 .notification-success {
   background: #1a3a25;
@@ -105,6 +113,7 @@
 .btn-danger:hover { background: rgba(229,62,62,0.25); }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
 
 /* Card */
 .card {
@@ -156,7 +165,8 @@
   vertical-align: middle;
 }
 
-.data-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+.data-table tbody tr { transition: background-color 0.1s ease; }
+.data-table tbody tr:hover { background: rgba(255,255,255,0.05); }
 .data-table tbody tr:last-child td { border-bottom: none; }
 
 .data-table .mono {
@@ -171,14 +181,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 80px 20px;
   color: var(--aws-text-muted);
-  gap: 12px;
+  gap: 16px;
 }
 
-.empty-state svg { opacity: 0.3; }
-.empty-state h3 { font-size: 16px; color: var(--aws-text-dim); }
-.empty-state p { font-size: 13px; text-align: center; max-width: 300px; }
+.empty-state svg { opacity: 0.2; }
+.empty-state h3 { font-size: 16px; color: var(--aws-text-dim); font-weight: 500; }
+.empty-state p { font-size: 13px; text-align: center; max-width: 340px; line-height: 1.5; }
 
 /* Loading */
 .loading-center {
@@ -202,7 +212,10 @@
   outline: none;
   transition: border-color 0.15s;
 }
-.input:focus { border-color: var(--aws-orange); }
+.input:focus {
+  border-color: var(--aws-orange);
+  box-shadow: 0 0 0 3px rgba(255, 153, 0, 0.15);
+}
 .input::placeholder { color: var(--aws-text-muted); }
 
 /* Search bar */
@@ -236,6 +249,7 @@
   justify-content: center;
   z-index: 1000;
   animation: fadeIn 0.15s ease;
+  backdrop-filter: blur(4px);
   padding: 20px;
 }
 
@@ -357,6 +371,7 @@
 .stat-card:hover {
   border-color: var(--aws-orange);
   background: var(--aws-surface-3);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 }
 
 .stat-label {
@@ -458,4 +473,18 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Keyboard shortcut hint badge */
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--aws-surface-3);
+  border: 1px solid var(--aws-border);
+  color: var(--aws-text-muted);
+  line-height: 1;
 }

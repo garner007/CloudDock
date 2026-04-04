@@ -98,7 +98,7 @@ export default function TopBar({
               background: 'rgba(255,153,0,0.2)', color: 'var(--aws-orange)',
               border: '1px solid rgba(255,153,0,0.3)', letterSpacing: '0.5px' }}>PRO</span>
           )}
-          <button className="refresh-btn" onClick={onRefreshHealth} title="Refresh connection">
+          <button className="refresh-btn" onClick={onRefreshHealth} title="Refresh connection" aria-label="Refresh connection">
             <RefreshCw size={11} />
           </button>
         </div>
@@ -109,6 +109,7 @@ export default function TopBar({
             className="topbar-icon-btn"
             onClick={() => setShowTheme(v => !v)}
             title={`Theme: ${themePref}`}
+            aria-label={`Theme: ${themePref}`}
           >
             <CurrentThemeIcon size={15} />
           </button>
@@ -129,7 +130,7 @@ export default function TopBar({
           )}
         </div>
 
-        <button className="topbar-icon-btn" onClick={() => onNavigate('settings')} title="Settings">
+        <button className="topbar-icon-btn" onClick={() => onNavigate('settings')} title="Settings" aria-label="Settings">
           <Settings size={16} />
         </button>
       </div>
