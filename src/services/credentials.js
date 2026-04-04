@@ -43,14 +43,19 @@ export async function getCredential(key) {
  * @param {Object} map  e.g. { ls_endpoint: '...', ls_region: '...', ... }
  */
 export async function setCredentials(map) {
+  let saved = false;
   if (isElectron()) {
     try {
       await window.electronAPI.credentials.set(map);
-      return;
-    } catch {}
+      saved = true;
+    } catch (e) {
+      console.warn('Failed to save to Electron safeStorage:', e);
+    }
   }
-  for (const [k, v] of Object.entries(map)) {
-    localStorage.setItem(k, v);
+  if (!saved) {
+    for (const [k, v] of Object.entries(map)) {
+      localStorage.setItem(k, v);
+    }
   }
 }
 
@@ -65,15 +70,4 @@ export async function clearCredentials() {
     } catch {}
   }
   KEYS.forEach(k => localStorage.removeItem(k));
-}
-
-/**
- * Synchronous getter for legacy code paths that haven't been migrated yet.
- * Only reads from localStorage — does NOT use safeStorage.
- * Prefer getCredential() for all new code.
- *
- * @deprecated — migrate callers to async getCredential()
- */
-export function getCredentialSync(key) {
-  return localStorage.getItem(key) ?? DEFAULTS[key] ?? null;
 }
