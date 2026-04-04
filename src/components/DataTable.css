@@ -1,0 +1,31 @@
+/* DataTable — supplemental styles (bulk styles live in App.css) */
+
+.data-table-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.data-table th.sortable:hover {
+  color: var(--aws-text);
+}
+.sort-indicator {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.skeleton-row td {
+  padding: 10px 16px;
+}
+.skeleton-bar {
+  height: 14px;
+  border-radius: 4px;
+  background: var(--aws-surface-3);
+  animation: pulse 1.5s ease-in-out infinite;
+}

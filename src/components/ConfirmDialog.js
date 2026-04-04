@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 
 /**
@@ -10,7 +10,7 @@ import { AlertTriangle, Trash2, X } from 'lucide-react';
  *   message     {string} Explanatory body text
  *   confirmLabel{string} Label for the confirm button (default "Delete")
  *   danger      {bool}   If true, confirm button is red (default true)
- *   onConfirm   {fn}     Called when the user confirms
+ *   onConfirm   {fn}     Called when the user confirms (may return a Promise for async loading)
  *   onCancel    {fn}     Called when the user cancels or presses Escape
  *
  * Usage:
@@ -37,6 +37,12 @@ export default function ConfirmDialog({
   onCancel,
 }) {
   const confirmRef = useRef(null);
+  const [confirming, setConfirming] = useState(false);
+
+  // Reset loading state when dialog opens/closes
+  useEffect(() => {
+    if (!open) setConfirming(false);
+  }, [open]);
 
   // Focus the confirm button on open so Enter/Space activates it
   useEffect(() => {
@@ -52,6 +58,18 @@ export default function ConfirmDialog({
   }, [open, onCancel]);
 
   if (!open) return null;
+
+  const handleConfirm = async () => {
+    const result = onConfirm?.();
+    if (result && typeof result.then === 'function') {
+      setConfirming(true);
+      try {
+        await result;
+      } finally {
+        setConfirming(false);
+      }
+    }
+  };
 
   return (
     <div
@@ -83,7 +101,7 @@ export default function ConfirmDialog({
             </div>
             <span id="confirm-title" className="modal-title">{title}</span>
           </div>
-          <button className="close-btn" onClick={onCancel} aria-label="Cancel">
+          <button className="close-btn" onClick={onCancel} aria-label="Cancel" disabled={confirming}>
             <X size={16} />
           </button>
         </div>
@@ -101,15 +119,16 @@ export default function ConfirmDialog({
 
         {/* Footer */}
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onCancel}>
+          <button className="btn btn-secondary" onClick={onCancel} disabled={confirming}>
             Cancel
           </button>
           <button
             ref={confirmRef}
             className={danger ? 'btn btn-danger' : 'btn btn-primary'}
-            onClick={onConfirm}
+            onClick={handleConfirm}
+            disabled={confirming}
           >
-            {confirmLabel}
+            {confirming ? 'Confirming...' : confirmLabel}
           </button>
         </div>
       </div>
