@@ -213,7 +213,17 @@
       "^@aws-sdk/client-dynamodb$": "<rootDir>/src/mocks/aws-sdk-dynamodb.js",
       "^@aws-sdk/util-dynamodb$": "<rootDir>/src/mocks/aws-sdk-dynamodb-util.js",
       "^@aws-sdk/client-sqs$": "<rootDir>/src/mocks/aws-sdk-sqs.js",
-      "^@aws-sdk/client-lambda$": "<rootDir>/src/mocks/aws-sdk-lambda.js"
+      "^@aws-sdk/client-lambda$": "<rootDir>/src/mocks/aws-sdk-lambda.js",
+      "^@aws-sdk/client-acm$": "<rootDir>/src/mocks/aws-sdk-acm.js",
+      "^@aws-sdk/client-kms$": "<rootDir>/src/mocks/aws-sdk-kms.js",
+      "^@aws-sdk/client-ssm$": "<rootDir>/src/mocks/aws-sdk-ssm.js",
+      "^@aws-sdk/client-secrets-manager$": "<rootDir>/src/mocks/aws-sdk-secrets-manager.js",
+      "^@aws-sdk/client-eventbridge$": "<rootDir>/src/mocks/aws-sdk-eventbridge.js",
+      "^@aws-sdk/client-firehose$": "<rootDir>/src/mocks/aws-sdk-firehose.js",
+      "^@aws-sdk/client-sns$": "<rootDir>/src/mocks/aws-sdk-sns.js",
+      "^@aws-sdk/client-kinesis$": "<rootDir>/src/mocks/aws-sdk-kinesis.js",
+      "^@aws-sdk/client-ses$": "<rootDir>/src/mocks/aws-sdk-ses.js",
+      "^@aws-sdk/client-sts$": "<rootDir>/src/mocks/aws-sdk-sts.js"
     }
   }
 }

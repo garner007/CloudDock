@@ -2,20 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import SESPage from '../../pages/SESPage';
 
-jest.mock('@aws-sdk/client-ses', () => ({
-  SESClient: jest.fn().mockImplementation(() => ({
-    send: jest.fn().mockResolvedValue({
-      Identities: [],
-      VerificationAttributes: {},
-    }),
-    destroy: jest.fn(),
-  })),
-  ListIdentitiesCommand: jest.fn(),
-  GetIdentityVerificationAttributesCommand: jest.fn(),
-  VerifyEmailIdentityCommand: jest.fn(),
-  DeleteIdentityCommand: jest.fn(),
-  SendEmailCommand: jest.fn(),
-}));
+// AWS SDK is auto-mocked via moduleNameMapper in package.json
 
 describe('SESPage', () => {
   const mockNotify = jest.fn();
@@ -26,7 +13,7 @@ describe('SESPage', () => {
 
   it('renders page title', () => {
     render(<SESPage showNotification={mockNotify} />);
-    expect(screen.getByText(/SES/)).toBeInTheDocument();
+    expect(screen.getByText(/Simple Email Service/)).toBeInTheDocument();
   });
 
   it('shows empty state when no identities exist', async () => {

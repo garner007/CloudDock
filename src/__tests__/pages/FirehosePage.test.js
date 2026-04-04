@@ -2,24 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import FirehosePage from '../../pages/FirehosePage';
 
-jest.mock('@aws-sdk/client-firehose', () => ({
-  FirehoseClient: jest.fn().mockImplementation(() => ({
-    send: jest.fn().mockResolvedValue({
-      DeliveryStreamNames: [],
-      DeliveryStreamDescription: {
-        DeliveryStreamStatus: 'ACTIVE',
-        CreateTimestamp: '2024-01-01T00:00:00Z',
-        Destinations: [],
-      },
-    }),
-    destroy: jest.fn(),
-  })),
-  ListDeliveryStreamsCommand: jest.fn(),
-  DescribeDeliveryStreamCommand: jest.fn(),
-  CreateDeliveryStreamCommand: jest.fn(),
-  DeleteDeliveryStreamCommand: jest.fn(),
-  PutRecordCommand: jest.fn(),
-}));
+// AWS SDK is auto-mocked via moduleNameMapper in package.json
 
 describe('FirehosePage', () => {
   const mockNotify = jest.fn();

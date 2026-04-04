@@ -2,22 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import EventBridgePage from '../../pages/EventBridgePage';
 
-jest.mock('@aws-sdk/client-eventbridge', () => ({
-  EventBridgeClient: jest.fn().mockImplementation(() => ({
-    send: jest.fn().mockResolvedValue({
-      EventBuses: [
-        { Name: 'default', Arn: 'arn:aws:events:us-east-1:000000000000:event-bus/default' },
-      ],
-      Rules: [],
-    }),
-    destroy: jest.fn(),
-  })),
-  ListEventBusesCommand: jest.fn(),
-  ListRulesCommand: jest.fn(),
-  PutRuleCommand: jest.fn(),
-  DeleteRuleCommand: jest.fn(),
-  PutEventsCommand: jest.fn(),
-}));
+// AWS SDK is auto-mocked via moduleNameMapper in package.json
 
 describe('EventBridgePage', () => {
   const mockNotify = jest.fn();

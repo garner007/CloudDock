@@ -2,26 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import SSMPage from '../../pages/SSMPage';
 
-jest.mock('@aws-sdk/client-ssm', () => ({
-  SSMClient: jest.fn().mockImplementation(() => ({
-    send: jest.fn().mockResolvedValue({
-      Parameters: [
-        {
-          Name: '/myapp/db/password',
-          Type: 'SecureString',
-          Description: 'Database password',
-          Version: 1,
-          LastModifiedDate: '2024-01-01T00:00:00Z',
-        },
-      ],
-    }),
-    destroy: jest.fn(),
-  })),
-  DescribeParametersCommand: jest.fn(),
-  PutParameterCommand: jest.fn(),
-  DeleteParameterCommand: jest.fn(),
-  GetParameterCommand: jest.fn(),
-}));
+// AWS SDK is auto-mocked via moduleNameMapper in package.json
 
 describe('SSMPage', () => {
   const mockNotify = jest.fn();
