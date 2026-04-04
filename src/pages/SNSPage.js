@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Bell, RefreshCw, Plus, Trash2, X, Send } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Bell, RefreshCw, Plus, Trash2, Send } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import CreateModal from '../components/CreateModal';
 
 export default function SNSPage({ showNotification }) {
-  const [topics, setTopics] = useState([]);
-  const { confirmDialog, requestConfirm } = useConfirm();
   const [subscriptions, setSubscriptions] = useState({});
+  const { confirmDialog, requestConfirm } = useConfirm();
   const [loading, setLoading] = useState(false);
+  const [topics, setTopics] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [newTopic, setNewTopic] = useState('');
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [showPublish, setShowPublish] = useState(false);
   const [publishMsg, setPublishMsg] = useState({ subject: '', message: '' });
@@ -34,16 +35,15 @@ export default function SNSPage({ showNotification }) {
     finally { setLoading(false); }
   }, [showNotification]);
 
-  useEffect(() => { loadTopics(); }, [loadTopics]);
+  React.useEffect(() => { loadTopics(); }, [loadTopics]);
 
-  const createTopic = async () => {
-    if (!newTopic) return;
+  const createTopic = async (values) => {
+    if (!values.name) return;
     try {
       const { SNSClient, CreateTopicCommand } = await import('@aws-sdk/client-sns');
       const client = new SNSClient(getConfig());
-      await client.send(new CreateTopicCommand({ Name: newTopic }));
-      showNotification(`Topic "${newTopic}" created`);
-      setNewTopic('');
+      await client.send(new CreateTopicCommand({ Name: values.name }));
+      showNotification(`Topic "${values.name}" created`);
       setShowCreate(false);
       loadTopics();
     } catch (e) { showNotification(e.message, 'error'); }
@@ -85,6 +85,26 @@ export default function SNSPage({ showNotification }) {
 
   const getName = (arn) => arn.split(':').pop();
 
+  const topicColumns = [
+    { key: 'TopicArn', label: 'Topic name', render: (arn) => <span style={{ fontWeight: 500 }}>{getName(arn)}</span> },
+    { key: '_arn', label: 'ARN', mono: true, render: (_, row) => <span style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>{row.TopicArn}</span> },
+    { key: '_subs', label: 'Subscriptions', render: (_, row) => (
+      <span className="badge badge-blue">
+        {subscriptions[row.TopicArn]?.length || 0} sub{subscriptions[row.TopicArn]?.length !== 1 ? 's' : ''}
+      </span>
+    )},
+  ];
+
+  const subColumns = [
+    { key: 'Protocol', label: 'Protocol', render: (v) => <span className="badge badge-blue">{v}</span> },
+    { key: 'Endpoint', label: 'Endpoint', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{v}</span> },
+    { key: 'SubscriptionArn', label: 'Status', render: (v) => (
+      <span className={`badge ${v === 'PendingConfirmation' ? 'badge-yellow' : 'badge-green'}`}>
+        {v === 'PendingConfirmation' ? 'Pending' : 'Confirmed'}
+      </span>
+    )},
+  ];
+
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -98,42 +118,22 @@ export default function SNSPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? (
-          <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        ) : topics.length === 0 ? (
-          <div className="empty-state">
-            <Bell size={40} />
-            <h3>No topics</h3>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create topic</button>
+      <DataTable
+        columns={topicColumns}
+        data={topics}
+        loading={loading}
+        rowKey="TopicArn"
+        emptyIcon={Bell}
+        emptyTitle="No topics"
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => { setSelectedTopic(row.TopicArn); setShowPublish(true); }}>
+              <Send size={11} /> Publish
+            </button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteTopic(row.TopicArn)}><Trash2 size={11} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Topic name</th><th>ARN</th><th>Subscriptions</th><th></th></tr></thead>
-            <tbody>
-              {topics.map(({ TopicArn }) => (
-                <tr key={TopicArn}>
-                  <td style={{ fontWeight: 500 }}>{getName(TopicArn)}</td>
-                  <td className="mono" style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>{TopicArn}</td>
-                  <td>
-                    <span className="badge badge-blue">
-                      {subscriptions[TopicArn]?.length || 0} sub{subscriptions[TopicArn]?.length !== 1 ? 's' : ''}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-primary btn-sm" onClick={() => { setSelectedTopic(TopicArn); setShowPublish(true); }}>
-                        <Send size={11} /> Publish
-                      </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteTopic(TopicArn)}><Trash2 size={11} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
       {selectedTopic && subscriptions[selectedTopic]?.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
@@ -157,35 +157,25 @@ export default function SNSPage({ showNotification }) {
         </div>
       )}
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create SNS Topic</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Topic Name</label>
-                <input className="input" style={{ width: '100%' }} value={newTopic}
-                  onChange={e => setNewTopic(e.target.value)} placeholder="my-topic" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && createTopic()} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createTopic}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create SNS Topic"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={createTopic}
+        fields={[
+          { name: 'name', label: 'Topic Name', required: true, placeholder: 'my-topic' },
+        ]}
+        submitLabel="Create"
+      />
 
       {showPublish && selectedTopic && (
         <div className="modal-overlay" onClick={() => setShowPublish(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Publish to {getName(selectedTopic)}</span>
-              <button className="close-btn" onClick={() => setShowPublish(false)}><X size={16} /></button>
+              <button className="close-btn" onClick={() => setShowPublish(false)}>
+                <span style={{ fontSize: 16 }}>&times;</span>
+              </button>
             </div>
             <div className="modal-body">
               <div className="form-group">
@@ -208,7 +198,7 @@ export default function SNSPage({ showNotification }) {
           </div>
         </div>
       )}
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

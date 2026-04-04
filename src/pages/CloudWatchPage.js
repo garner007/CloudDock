@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, RefreshCw, Trash2, X, ChevronRight, Search } from 'lucide-react';
+import { Activity, RefreshCw, Trash2, ChevronRight, Search } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import { fmtDate, fmtSize } from '../utils/formatters';
 
 export default function CloudWatchPage({ showNotification }) {
   const [groups, setGroups] = useState([]);
@@ -83,14 +85,11 @@ export default function CloudWatchPage({ showNotification }) {
   const openGroup = (name) => { setSelectedGroup(name); loadStreams(name); };
   const openStream = (name) => { setSelectedStream(name); loadEvents(selectedGroup, name); };
 
-  const fmtTime = (ms) => ms ? new Date(ms).toLocaleString() : '-';
-  const fmtBytes = (b) => b ? (b >= 1e9 ? `${(b/1e9).toFixed(1)} GB` : b >= 1e6 ? `${(b/1e6).toFixed(1)} MB` : `${(b/1024).toFixed(1)} KB`) : '-';
-
   const filteredGroups = groups.filter(g => g.logGroupName?.toLowerCase().includes(search.toLowerCase()));
   const filteredStreams = streams.filter(s => s.logStreamName?.toLowerCase().includes(search.toLowerCase()));
   const filteredEvents = events.filter(e => !filter || e.message?.toLowerCase().includes(filter.toLowerCase()));
 
-  // Log event viewer
+  // Log event viewer (complex nested view — keep custom)
   if (selectedGroup && selectedStream) {
     return (
       <div className="fade-in">
@@ -105,7 +104,7 @@ export default function CloudWatchPage({ showNotification }) {
             <div className="page-subtitle">{filteredEvents.length} events</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStream(null)}>← Streams</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStream(null)}>&#8592; Streams</button>
             <button className="btn btn-secondary btn-sm" onClick={() => loadEvents(selectedGroup, selectedStream)}>
               <RefreshCw size={13} className={loading ? 'spin' : ''} />
             </button>
@@ -132,7 +131,7 @@ export default function CloudWatchPage({ showNotification }) {
                   {filteredEvents.map((ev, i) => (
                     <tr key={i}>
                       <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--aws-text-muted)', whiteSpace: 'nowrap' }}>
-                        {fmtTime(ev.timestamp)}
+                        {fmtDate(ev.timestamp)}
                       </td>
                       <td>
                         <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0, color: ev.message?.includes('ERROR') || ev.message?.includes('error') ? 'var(--aws-red)' : ev.message?.includes('WARN') ? 'var(--aws-yellow)' : 'var(--aws-text)' }}>
@@ -150,8 +149,14 @@ export default function CloudWatchPage({ showNotification }) {
     );
   }
 
-  // Stream list
+  // Stream list (nested sub-view — keep custom navigation, migrate table)
   if (selectedGroup) {
+    const streamColumns = [
+      { key: 'logStreamName', label: 'Stream name', render: (v) => <button className="link-btn" onClick={() => openStream(v)}>{v}</button> },
+      { key: 'lastEventTimestamp', label: 'Last event', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+      { key: 'creationTime', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+    ];
+
     return (
       <div className="fade-in">
         <div className="page-header">
@@ -160,49 +165,40 @@ export default function CloudWatchPage({ showNotification }) {
             <div className="page-subtitle">{streams.length} log streams</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedGroup(null)}>← Log Groups</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedGroup(null)}>&#8592; Log Groups</button>
             <button className="btn btn-secondary btn-sm" onClick={() => loadStreams(selectedGroup)}>
               <RefreshCw size={13} className={loading ? 'spin' : ''} />
             </button>
           </div>
         </div>
 
-        <div className="action-row">
-          <div className="search-bar">
-            <Search size={13} color="var(--aws-text-muted)" />
-            <input placeholder="Search streams..." value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-        </div>
+        <DataTable
+          columns={streamColumns}
+          data={filteredStreams}
+          loading={loading}
+          rowKey="logStreamName"
+          searchable
+          searchPlaceholder="Search streams..."
+          searchKeys={['logStreamName']}
+          emptyIcon={Activity}
+          emptyTitle="No streams"
+          emptyDescription="This log group has no streams yet."
+        />
 
-        <div className="card">
-          {loading ? (
-            <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-          ) : filteredStreams.length === 0 ? (
-            <div className="empty-state"><Activity size={40} /><h3>No streams</h3><p>This log group has no streams yet.</p></div>
-          ) : (
-            <table className="data-table">
-              <thead><tr><th>Stream name</th><th>Last event</th><th>Created</th></tr></thead>
-              <tbody>
-                {filteredStreams.map(s => (
-                  <tr key={s.logStreamName}>
-                    <td>
-                      <button className="link-btn" onClick={() => openStream(s.logStreamName)}>{s.logStreamName}</button>
-                    </td>
-                    <td style={{ fontSize: 12 }}>{fmtTime(s.lastEventTimestamp)}</td>
-                    <td style={{ fontSize: 12 }}>{fmtTime(s.creationTime)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
         <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
 
-  // Group list
+  // Group list (outer table — migrate)
+  const groupColumns = [
+    { key: 'logGroupName', label: 'Log group name', render: (v) => <button className="link-btn" onClick={() => openGroup(v)}>{v}</button> },
+    { key: 'storedBytes', label: 'Stored bytes', render: (v) => fmtSize(v) },
+    { key: 'retentionInDays', label: 'Retention', render: (v) => v ? `${v} days` : <span style={{ color: 'var(--aws-text-muted)' }}>Never expire</span> },
+    { key: 'creationTime', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
+
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -219,35 +215,24 @@ export default function CloudWatchPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? (
-          <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        ) : filteredGroups.length === 0 ? (
-          <div className="empty-state"><Activity size={40} /><h3>No log groups</h3><p>Log groups appear here when Lambda functions, ECS tasks, or other services write logs.</p></div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Log group name</th><th>Stored bytes</th><th>Retention</th><th>Created</th><th></th></tr></thead>
-            <tbody>
-              {filteredGroups.map(g => (
-                <tr key={g.logGroupName}>
-                  <td><button className="link-btn" onClick={() => openGroup(g.logGroupName)}>{g.logGroupName}</button></td>
-                  <td>{fmtBytes(g.storedBytes)}</td>
-                  <td>{g.retentionInDays ? `${g.retentionInDays} days` : <span style={{ color: 'var(--aws-text-muted)' }}>Never expire</span>}</td>
-                  <td style={{ fontSize: 12 }}>{fmtTime(g.creationTime)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openGroup(g.logGroupName)}>Streams</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteGroup(g.logGroupName)}><Trash2 size={11} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <DataTable
+        columns={groupColumns}
+        data={filteredGroups}
+        loading={loading}
+        rowKey="logGroupName"
+        emptyIcon={Activity}
+        emptyTitle="No log groups"
+        emptyDescription="Log groups appear here when Lambda functions, ECS tasks, or other services write logs."
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => openGroup(row.logGroupName)}>Streams</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteGroup(row.logGroupName)}><Trash2 size={11} /></button>
+          </div>
         )}
-      </div>
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

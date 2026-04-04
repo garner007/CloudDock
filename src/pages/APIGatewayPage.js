@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Globe, RefreshCw, Plus, Trash2, X, ChevronRight, ExternalLink } from 'lucide-react';
+import { Globe, RefreshCw, Plus, Trash2, ExternalLink } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import CreateModal from '../components/CreateModal';
+import { fmtDate } from '../utils/formatters';
 
 export default function APIGatewayPage({ showNotification }) {
   const [apis, setApis] = useState([]);
@@ -12,7 +15,6 @@ export default function APIGatewayPage({ showNotification }) {
   const [selectedApi, setSelectedApi] = useState(null);
   const [tab, setTab] = useState('resources');
   const [showCreate, setShowCreate] = useState(false);
-  const [newApi, setNewApi] = useState({ name: '', description: '' });
 
   const loadApis = useCallback(async () => {
     setLoading(true);
@@ -44,15 +46,14 @@ export default function APIGatewayPage({ showNotification }) {
     finally { setLoading(false); }
   };
 
-  const createApi = async () => {
-    if (!newApi.name) return;
+  const createApi = async (values) => {
+    if (!values.name) return;
     try {
       const { APIGatewayClient, CreateRestApiCommand } = await import('@aws-sdk/client-api-gateway');
       const client = new APIGatewayClient(getConfig());
-      await client.send(new CreateRestApiCommand({ name: newApi.name, description: newApi.description }));
-      showNotification(`API "${newApi.name}" created`);
+      await client.send(new CreateRestApiCommand({ name: values.name, description: values.description }));
+      showNotification(`API "${values.name}" created`);
       setShowCreate(false);
-      setNewApi({ name: '', description: '' });
       loadApis();
     } catch (e) { showNotification(e.message, 'error'); }
   };
@@ -83,9 +84,34 @@ export default function APIGatewayPage({ showNotification }) {
 
   const getMethods = (resource) => Object.keys(resource.resourceMethods || {}).join(', ') || '-';
 
-  const fmtDate = (d) => d ? new Date(d).toLocaleString() : '-';
-
+  // Detail view (complex nested view with tabs — keep custom)
   if (selectedApi) {
+    const resourceColumns = [
+      { key: 'path', label: 'Path', mono: true, render: (v) => <span style={{ fontWeight: 500 }}>{v || '/'}</span> },
+      { key: 'id', label: 'Resource ID', mono: true, render: (v) => <span style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>{v}</span> },
+      { key: '_methods', label: 'Methods', render: (_, row) => {
+        const methods = getMethods(row);
+        return methods !== '-' ? methods.split(', ').map(m => (
+          <span key={m} className={`badge ${m === 'GET' ? 'badge-green' : m === 'POST' ? 'badge-blue' : m === 'DELETE' ? 'badge-red' : m === 'PUT' ? 'badge-yellow' : 'badge-gray'}`} style={{ marginRight: 4, fontSize: 10 }}>{m}</span>
+        )) : <span style={{ color: 'var(--aws-text-muted)' }}>-</span>;
+      }},
+      { key: 'parentId', label: 'Parent', mono: true, render: (v) => <span style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>{v || '-'}</span> },
+    ];
+
+    const stageColumns = [
+      { key: 'stageName', label: 'Stage', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+      { key: '_endpoint', label: 'Endpoint URL', render: (_, row) => (
+        <a href={getEndpointUrl(selectedApi, row)} target="_blank" rel="noreferrer"
+          style={{ color: 'var(--aws-cyan)', fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          {getEndpointUrl(selectedApi, row)} <ExternalLink size={10} />
+        </a>
+      )},
+      { key: 'createdDate', label: 'Deployed', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+    ];
+
+    // Sort resources by path for display
+    const sortedResources = [...resources].sort((a, b) => (a.path || '').localeCompare(b.path || ''));
+
     return (
       <div className="fade-in">
         <div className="page-header">
@@ -94,7 +120,7 @@ export default function APIGatewayPage({ showNotification }) {
             <div className="page-subtitle">ID: {selectedApi.id} · {resources.length} resources · {stages.length} stages</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedApi(null)}>← APIs</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedApi(null)}>&#8592; APIs</button>
             <button className="btn btn-secondary btn-sm" onClick={() => openApi(selectedApi)}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
           </div>
         </div>
@@ -108,56 +134,26 @@ export default function APIGatewayPage({ showNotification }) {
         </div>
 
         {tab === 'resources' && (
-          <div className="card">
-            {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-            : resources.length === 0 ? (
-              <div className="empty-state"><Globe size={40} /><h3>No resources</h3></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Path</th><th>Resource ID</th><th>Methods</th><th>Parent</th></tr></thead>
-                <tbody>
-                  {resources.sort((a, b) => (a.path || '').localeCompare(b.path || '')).map(r => (
-                    <tr key={r.id}>
-                      <td className="mono" style={{ fontWeight: 500 }}>{r.path || '/'}</td>
-                      <td className="mono" style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>{r.id}</td>
-                      <td>
-                        {getMethods(r) !== '-' ? getMethods(r).split(', ').map(m => (
-                          <span key={m} className={`badge ${m === 'GET' ? 'badge-green' : m === 'POST' ? 'badge-blue' : m === 'DELETE' ? 'badge-red' : m === 'PUT' ? 'badge-yellow' : 'badge-gray'}`} style={{ marginRight: 4, fontSize: 10 }}>{m}</span>
-                        )) : <span style={{ color: 'var(--aws-text-muted)' }}>-</span>}
-                      </td>
-                      <td className="mono" style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>{r.parentId || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={resourceColumns}
+            data={sortedResources}
+            loading={loading}
+            rowKey="id"
+            emptyIcon={Globe}
+            emptyTitle="No resources"
+          />
         )}
 
         {tab === 'stages' && (
-          <div className="card">
-            {stages.length === 0 ? (
-              <div className="empty-state"><Globe size={40} /><h3>No stages</h3><p>Deploy the API to create stages.</p></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Stage</th><th>Endpoint URL</th><th>Deployed</th></tr></thead>
-                <tbody>
-                  {stages.map(s => (
-                    <tr key={s.stageName}>
-                      <td style={{ fontWeight: 500 }}>{s.stageName}</td>
-                      <td>
-                        <a href={getEndpointUrl(selectedApi, s)} target="_blank" rel="noreferrer"
-                          style={{ color: 'var(--aws-cyan)', fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {getEndpointUrl(selectedApi, s)} <ExternalLink size={10} />
-                        </a>
-                      </td>
-                      <td style={{ fontSize: 12 }}>{fmtDate(s.createdDate)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={stageColumns}
+            data={stages}
+            loading={false}
+            rowKey="stageName"
+            emptyIcon={Globe}
+            emptyTitle="No stages"
+            emptyDescription="Deploy the API to create stages."
+          />
         )}
 
         {tab === 'details' && (
@@ -180,10 +176,17 @@ export default function APIGatewayPage({ showNotification }) {
             </div>
           </div>
         )}
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
+
+  const apiColumns = [
+    { key: 'name', label: 'API name', render: (v, row) => <button className="link-btn" onClick={() => openApi(row)}>{v}</button> },
+    { key: 'id', label: 'API ID', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{v}</span> },
+    { key: 'description', label: 'Description', render: (v) => <span style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{v || '-'}</span> },
+    { key: 'createdDate', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
 
   return (
     <div className="fade-in">
@@ -198,65 +201,36 @@ export default function APIGatewayPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : apis.length === 0 ? (
-          <div className="empty-state">
-            <Globe size={40} /><h3>No APIs</h3>
-            <p>Create REST APIs or deploy them to LocalStack using the CLI or CDK.</p>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create API</button>
+      <DataTable
+        columns={apiColumns}
+        data={apis}
+        loading={loading}
+        rowKey="id"
+        emptyIcon={Globe}
+        emptyTitle="No APIs"
+        emptyDescription="Create REST APIs or deploy them to LocalStack using the CLI or CDK."
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => openApi(row)}>Explore</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteApi(row.id, row.name)}><Trash2 size={11} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>API name</th><th>API ID</th><th>Description</th><th>Created</th><th></th></tr></thead>
-            <tbody>
-              {apis.map(api => (
-                <tr key={api.id}>
-                  <td><button className="link-btn" onClick={() => openApi(api)}>{api.name}</button></td>
-                  <td className="mono" style={{ fontSize: 11 }}>{api.id}</td>
-                  <td style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{api.description || '-'}</td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(api.createdDate)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openApi(api)}>Explore</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteApi(api.id, api.name)}><Trash2 size={11} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create REST API</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">API Name</label>
-                <input className="input" style={{ width: '100%' }} value={newApi.name}
-                  onChange={e => setNewApi({ ...newApi, name: e.target.value })} placeholder="my-api" autoFocus />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Description (optional)</label>
-                <input className="input" style={{ width: '100%' }} value={newApi.description}
-                  onChange={e => setNewApi({ ...newApi, description: e.target.value })} placeholder="My API description" />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createApi}>Create API</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create REST API"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={createApi}
+        fields={[
+          { name: 'name', label: 'API Name', required: true, placeholder: 'my-api' },
+          { name: 'description', label: 'Description (optional)', placeholder: 'My API description' },
+        ]}
+        submitLabel="Create API"
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

@@ -1,18 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CloudCog, RefreshCw, Trash2, X, Eye } from 'lucide-react';
+import { CloudCog, RefreshCw, Trash2, Eye } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import { fmtDate } from '../utils/formatters';
 
-const STATUS_BADGE = {
-  'CREATE_COMPLETE': 'badge-green',
-  'UPDATE_COMPLETE': 'badge-green',
-  'DELETE_COMPLETE': 'badge-gray',
-  'CREATE_IN_PROGRESS': 'badge-yellow',
-  'UPDATE_IN_PROGRESS': 'badge-yellow',
-  'DELETE_IN_PROGRESS': 'badge-yellow',
-  'ROLLBACK_COMPLETE': 'badge-red',
-  'CREATE_FAILED': 'badge-red',
-  'UPDATE_FAILED': 'badge-red',
+const CF_STATUS_MAP = {
+  CREATE_COMPLETE: 'green',
+  UPDATE_COMPLETE: 'green',
+  DELETE_COMPLETE: 'gray',
+  CREATE_IN_PROGRESS: 'yellow',
+  UPDATE_IN_PROGRESS: 'yellow',
+  DELETE_IN_PROGRESS: 'yellow',
+  ROLLBACK_COMPLETE: 'red',
+  CREATE_FAILED: 'red',
+  UPDATE_FAILED: 'red',
 };
 
 export default function CloudFormationPage({ showNotification }) {
@@ -78,9 +81,26 @@ export default function CloudFormationPage({ showNotification }) {
     });
   };
 
-  const fmtDate = (d) => d ? new Date(d).toLocaleString() : '-';
-
+  // Detail view (complex nested view with tabs — keep custom)
   if (selectedStack) {
+    const resourceColumns = [
+      { key: 'LogicalResourceId', label: 'Logical ID', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+      { key: 'PhysicalResourceId', label: 'Physical ID', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{v || '-'}</span> },
+      { key: 'ResourceType', label: 'Type', render: (v) => <span className="badge badge-gray" style={{ fontSize: 10 }}>{v}</span> },
+      { key: 'ResourceStatus', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={CF_STATUS_MAP} /> },
+    ];
+
+    const outputColumns = [
+      { key: 'OutputKey', label: 'Key', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+      { key: 'OutputValue', label: 'Value', mono: true, render: (v) => <span style={{ fontSize: 12 }}>{v}</span> },
+      { key: 'Description', label: 'Description', render: (v) => <span style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{v || '-'}</span> },
+    ];
+
+    const paramColumns = [
+      { key: 'ParameterKey', label: 'Key', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+      { key: 'ParameterValue', label: 'Value', mono: true, render: (v) => <span style={{ fontSize: 12 }}>{v}</span> },
+    ];
+
     return (
       <div className="fade-in">
         <div className="page-header">
@@ -89,7 +109,7 @@ export default function CloudFormationPage({ showNotification }) {
             <div className="page-subtitle">{resources.length} resources</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStack(null)}>← Stacks</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStack(null)}>&#8592; Stacks</button>
             <button className="btn btn-danger btn-sm" onClick={() => deleteStack(selectedStack.StackName)}>
               <Trash2 size={12} /> Delete
             </button>
@@ -111,9 +131,7 @@ export default function CloudFormationPage({ showNotification }) {
                 <div className="stat-card">
                   <div className="stat-label">Status</div>
                   <div style={{ marginTop: 8 }}>
-                    <span className={`badge ${STATUS_BADGE[stackDetail.StackStatus] || 'badge-gray'}`}>
-                      {stackDetail.StackStatus}
-                    </span>
+                    <StatusBadge status={stackDetail.StackStatus} colorMap={CF_STATUS_MAP} />
                   </div>
                 </div>
                 <div className="stat-card">
@@ -146,71 +164,48 @@ export default function CloudFormationPage({ showNotification }) {
         )}
 
         {tab === 'resources' && (
-          <div className="card">
-            {resources.length === 0 ? (
-              <div className="empty-state"><CloudCog size={30} /><p>No resources found.</p></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Logical ID</th><th>Physical ID</th><th>Type</th><th>Status</th></tr></thead>
-                <tbody>
-                  {resources.map(r => (
-                    <tr key={r.LogicalResourceId}>
-                      <td style={{ fontWeight: 500 }}>{r.LogicalResourceId}</td>
-                      <td className="mono" style={{ fontSize: 11 }}>{r.PhysicalResourceId || '-'}</td>
-                      <td><span className="badge badge-gray" style={{ fontSize: 10 }}>{r.ResourceType}</span></td>
-                      <td><span className={`badge ${STATUS_BADGE[r.ResourceStatus] || 'badge-gray'}`}>{r.ResourceStatus}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={resourceColumns}
+            data={resources}
+            loading={false}
+            rowKey="LogicalResourceId"
+            emptyIcon={CloudCog}
+            emptyTitle="No resources found"
+          />
         )}
 
         {tab === 'outputs' && (
-          <div className="card">
-            {!stackDetail?.Outputs?.length ? (
-              <div className="empty-state"><CloudCog size={30} /><p>No outputs defined in this stack.</p></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Key</th><th>Value</th><th>Description</th></tr></thead>
-                <tbody>
-                  {stackDetail.Outputs.map(o => (
-                    <tr key={o.OutputKey}>
-                      <td style={{ fontWeight: 500 }}>{o.OutputKey}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>{o.OutputValue}</td>
-                      <td style={{ fontSize: 12, color: 'var(--aws-text-muted)' }}>{o.Description || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={outputColumns}
+            data={stackDetail?.Outputs || []}
+            loading={false}
+            rowKey="OutputKey"
+            emptyIcon={CloudCog}
+            emptyTitle="No outputs defined in this stack"
+          />
         )}
 
         {tab === 'parameters' && (
-          <div className="card">
-            {!stackDetail?.Parameters?.length ? (
-              <div className="empty-state"><CloudCog size={30} /><p>No parameters used in this stack.</p></div>
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>Key</th><th>Value</th></tr></thead>
-                <tbody>
-                  {stackDetail.Parameters.map(p => (
-                    <tr key={p.ParameterKey}>
-                      <td style={{ fontWeight: 500 }}>{p.ParameterKey}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>{p.ParameterValue}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <DataTable
+            columns={paramColumns}
+            data={stackDetail?.Parameters || []}
+            loading={false}
+            rowKey="ParameterKey"
+            emptyIcon={CloudCog}
+            emptyTitle="No parameters used in this stack"
+          />
         )}
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
+
+  const stackColumns = [
+    { key: 'StackName', label: 'Stack name', render: (v, row) => <button className="link-btn" onClick={() => openStack(row)}>{v}</button> },
+    { key: 'StackStatus', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={CF_STATUS_MAP} /> },
+    { key: 'CreationTime', label: 'Created', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+    { key: 'LastUpdatedTime', label: 'Updated', render: (v) => <span style={{ fontSize: 12 }}>{fmtDate(v)}</span> },
+  ];
 
   return (
     <div className="fade-in">
@@ -222,41 +217,24 @@ export default function CloudFormationPage({ showNotification }) {
         <button className="btn btn-secondary btn-sm" onClick={loadStacks}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
       </div>
 
-      <div className="card">
-        {loading ? (
-          <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        ) : stacks.length === 0 ? (
-          <div className="empty-state">
-            <CloudCog size={40} />
-            <h3>No stacks</h3>
-            <p>Deploy CloudFormation templates to LocalStack to see them here.</p>
+      <DataTable
+        columns={stackColumns}
+        data={stacks}
+        loading={loading}
+        rowKey="StackId"
+        emptyIcon={CloudCog}
+        emptyTitle="No stacks"
+        emptyDescription="Deploy CloudFormation templates to LocalStack to see them here."
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => openStack(row)}><Eye size={11} /> Details</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteStack(row.StackName)}><Trash2 size={11} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Stack name</th><th>Status</th><th>Created</th><th>Updated</th><th></th></tr></thead>
-            <tbody>
-              {stacks.map(s => (
-                <tr key={s.StackId}>
-                  <td>
-                    <button className="link-btn" onClick={() => openStack(s)}>{s.StackName}</button>
-                  </td>
-                  <td><span className={`badge ${STATUS_BADGE[s.StackStatus] || 'badge-gray'}`}>{s.StackStatus}</span></td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(s.CreationTime)}</td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(s.LastUpdatedTime)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openStack(s)}><Eye size={11} /> Details</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteStack(s.StackName)}><Trash2 size={11} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Waves, RefreshCw, Plus, Trash2, X, Send } from 'lucide-react';
+import { Waves, RefreshCw, Plus, Trash2, Send } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import CreateModal from '../components/CreateModal';
+
+const KINESIS_STATUS_MAP = {
+  ACTIVE: 'green',
+  CREATING: 'yellow',
+  DELETING: 'red',
+};
 
 export default function KinesisPage({ showNotification }) {
   const [streams, setStreams] = useState([]);
@@ -10,7 +19,6 @@ export default function KinesisPage({ showNotification }) {
   const [loading, setLoading] = useState(false);
   const [selectedStream, setSelectedStream] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [newStream, setNewStream] = useState({ name: '', shards: 1 });
   const [showPut, setShowPut] = useState(false);
   const [record, setRecord] = useState({ data: '{"hello":"world"}', partitionKey: 'key-1' });
 
@@ -36,15 +44,14 @@ export default function KinesisPage({ showNotification }) {
 
   useEffect(() => { loadStreams(); }, [loadStreams]);
 
-  const createStream = async () => {
-    if (!newStream.name) return;
+  const createStream = async (values) => {
+    if (!values.name) return;
     try {
       const { KinesisClient, CreateStreamCommand } = await import('@aws-sdk/client-kinesis');
       const client = new KinesisClient(getConfig());
-      await client.send(new CreateStreamCommand({ StreamName: newStream.name, ShardCount: newStream.shards }));
-      showNotification(`Stream "${newStream.name}" created`);
+      await client.send(new CreateStreamCommand({ StreamName: values.name, ShardCount: parseInt(values.shards) || 1 }));
+      showNotification(`Stream "${values.name}" created`);
       setShowCreate(false);
-      setNewStream({ name: '', shards: 1 });
       loadStreams();
     } catch (e) { showNotification(e.message, 'error'); }
   };
@@ -82,13 +89,6 @@ export default function KinesisPage({ showNotification }) {
     } catch (e) { showNotification(e.message, 'error'); }
   };
 
-  const statusBadge = (status) => {
-    if (status === 'ACTIVE') return 'badge-green';
-    if (status === 'CREATING') return 'badge-yellow';
-    if (status === 'DELETING') return 'badge-red';
-    return 'badge-gray';
-  };
-
   const detail = selectedStream ? streamDetails[selectedStream] : null;
 
   if (selectedStream) {
@@ -96,13 +96,13 @@ export default function KinesisPage({ showNotification }) {
       <div className="fade-in">
         <div className="page-header">
           <div>
-            <div className="page-title"><Waves size={20} /> Kinesis › {selectedStream}</div>
+            <div className="page-title"><Waves size={20} /> Kinesis &rsaquo; {selectedStream}</div>
             <div className="page-subtitle">
               {detail ? `${detail.OpenShardCount} shard${detail.OpenShardCount !== 1 ? 's' : ''} · ${detail.StreamStatus}` : 'Loading...'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStream(null)}>← Streams</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStream(null)}>&#8592; Streams</button>
             <button className="btn btn-secondary btn-sm" onClick={loadStreams}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
             <button className="btn btn-primary" onClick={() => setShowPut(true)}><Send size={13} /> Put record</button>
           </div>
@@ -110,7 +110,7 @@ export default function KinesisPage({ showNotification }) {
 
         {detail && (
           <div className="stats-row">
-            <div className="stat-card"><div className="stat-label">Status</div><div style={{ marginTop: 8 }}><span className={`badge ${statusBadge(detail.StreamStatus)}`}>{detail.StreamStatus}</span></div></div>
+            <div className="stat-card"><div className="stat-label">Status</div><div style={{ marginTop: 8 }}><StatusBadge status={detail.StreamStatus} colorMap={KINESIS_STATUS_MAP} /></div></div>
             <div className="stat-card"><div className="stat-label">Open Shards</div><div className="stat-value">{detail.OpenShardCount}</div></div>
             <div className="stat-card"><div className="stat-label">Retention (hrs)</div><div className="stat-value">{detail.RetentionPeriodHours}</div></div>
             <div className="stat-card"><div className="stat-label">Consumers</div><div className="stat-value">{detail.ConsumerCount || 0}</div></div>
@@ -133,7 +133,7 @@ export default function KinesisPage({ showNotification }) {
             <div className="modal" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <span className="modal-title">Put Record into {selectedStream}</span>
-                <button className="close-btn" onClick={() => setShowPut(false)}><X size={16} /></button>
+                <button className="close-btn" onClick={() => setShowPut(false)}><span style={{ fontSize: 16 }}>&times;</span></button>
               </div>
               <div className="modal-body">
                 <div className="form-group">
@@ -154,10 +154,21 @@ export default function KinesisPage({ showNotification }) {
             </div>
           </div>
         )}
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
+
+  // Build table data enriched with details
+  const tableData = streams.map(name => ({ name, ...(streamDetails[name] || {}) }));
+
+  const streamColumns = [
+    { key: 'name', label: 'Stream name', render: (v) => <button className="link-btn" onClick={() => setSelectedStream(v)}>{v}</button> },
+    { key: 'StreamStatus', label: 'Status', render: (v) => v ? <StatusBadge status={v} colorMap={KINESIS_STATUS_MAP} /> : '...' },
+    { key: 'OpenShardCount', label: 'Shards', render: (v) => v ?? '...' },
+    { key: 'RetentionPeriodHours', label: 'Retention', render: (v) => v ? `${v}h` : '...' },
+    { key: 'StreamARN', label: 'ARN', mono: true, render: (v) => <span style={{ fontSize: 10, color: 'var(--aws-text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>{v || '-'}</span> },
+  ];
 
   return (
     <div className="fade-in">
@@ -172,68 +183,35 @@ export default function KinesisPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : streams.length === 0 ? (
-          <div className="empty-state">
-            <Waves size={40} /><h3>No streams</h3>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create stream</button>
+      <DataTable
+        columns={streamColumns}
+        data={tableData}
+        loading={loading}
+        rowKey="name"
+        emptyIcon={Waves}
+        emptyTitle="No streams"
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStream(row.name)}>Details</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteStream(row.name)}><Trash2 size={11} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Stream name</th><th>Status</th><th>Shards</th><th>Retention</th><th>ARN</th><th></th></tr></thead>
-            <tbody>
-              {streams.map(name => {
-                const d = streamDetails[name];
-                return (
-                  <tr key={name}>
-                    <td><button className="link-btn" onClick={() => setSelectedStream(name)}>{name}</button></td>
-                    <td><span className={`badge ${statusBadge(d?.StreamStatus)}`}>{d?.StreamStatus || '...'}</span></td>
-                    <td>{d?.OpenShardCount ?? '...'}</td>
-                    <td>{d?.RetentionPeriodHours ? `${d.RetentionPeriodHours}h` : '...'}</td>
-                    <td className="mono" style={{ fontSize: 10, color: 'var(--aws-text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{d?.StreamARN || '-'}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setSelectedStream(name)}>Details</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => deleteStream(name)}><Trash2 size={11} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create Kinesis Stream</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Stream Name</label>
-                <input className="input" style={{ width: '100%' }} value={newStream.name}
-                  onChange={e => setNewStream({ ...newStream, name: e.target.value })} placeholder="my-stream" autoFocus />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Shard Count</label>
-                <input className="input" style={{ width: '100%' }} type="number" min={1} max={100} value={newStream.shards}
-                  onChange={e => setNewStream({ ...newStream, shards: parseInt(e.target.value) || 1 })} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createStream}>Create Stream</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create Kinesis Stream"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={createStream}
+        fields={[
+          { name: 'name', label: 'Stream Name', required: true, placeholder: 'my-stream' },
+          { name: 'shards', label: 'Shard Count', type: 'number', defaultValue: '1', placeholder: '1' },
+        ]}
+        submitLabel="Create Stream"
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

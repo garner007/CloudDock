@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Network, RefreshCw, Plus, Trash2, X } from 'lucide-react';
+import { Network, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
+import DataTable from '../components/DataTable';
+import CreateModal from '../components/CreateModal';
 
 const RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SOA', 'SPF', 'SRV', 'TXT'];
 
@@ -13,7 +15,6 @@ export default function Route53Page({ showNotification }) {
   const [selectedZone, setSelectedZone] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateRecord, setShowCreateRecord] = useState(false);
-  const [newZone, setNewZone] = useState({ name: '', private: false });
   const [newRecord, setNewRecord] = useState({ name: '', type: 'A', ttl: '300', value: '' });
 
   const loadZones = useCallback(async () => {
@@ -42,19 +43,18 @@ export default function Route53Page({ showNotification }) {
 
   const openZone = (zone) => { setSelectedZone(zone); loadRecords(zone.Id); };
 
-  const createZone = async () => {
-    if (!newZone.name) return;
+  const createZone = async (values) => {
+    if (!values.name) return;
     try {
       const { Route53Client, CreateHostedZoneCommand } = await import('@aws-sdk/client-route-53');
       const client = new Route53Client(getConfig());
       await client.send(new CreateHostedZoneCommand({
-        Name: newZone.name,
+        Name: values.name,
         CallerReference: Date.now().toString(),
-        HostedZoneConfig: { PrivateZone: newZone.private },
+        HostedZoneConfig: { PrivateZone: false },
       }));
-      showNotification(`Hosted zone "${newZone.name}" created`);
+      showNotification(`Hosted zone "${values.name}" created`);
       setShowCreate(false);
-      setNewZone({ name: '', private: false });
       loadZones();
     } catch (e) { showNotification(e.message, 'error'); }
   };
@@ -107,7 +107,19 @@ export default function Route53Page({ showNotification }) {
   const getZoneName = (z) => z.Name?.replace(/\.$/, '') || z.Id;
   const typeColor = (t) => ({ A: 'badge-green', AAAA: 'badge-blue', CNAME: 'badge-yellow', MX: 'badge-blue', TXT: 'badge-gray', NS: 'badge-gray', SOA: 'badge-gray' }[t] || 'badge-gray');
 
+  // Records view (nested sub-view — keep custom)
   if (selectedZone) {
+    const recordColumns = [
+      { key: 'Name', label: 'Record name', mono: true, render: (v) => <span style={{ fontSize: 12 }}>{v}</span> },
+      { key: 'Type', label: 'Type', render: (v) => <span className={`badge ${typeColor(v)}`}>{v}</span> },
+      { key: 'TTL', label: 'TTL', render: (v, row) => v ?? <span className="badge badge-blue">Alias</span> },
+      { key: '_value', label: 'Value / Routing', render: (_, row) => (
+        <span className="mono" style={{ fontSize: 11 }}>
+          {row.AliasTarget ? row.AliasTarget.DNSName : (row.ResourceRecords || []).map(v => v.Value).join(', ')}
+        </span>
+      )},
+    ];
+
     return (
       <div className="fade-in">
         <div className="page-header">
@@ -116,43 +128,27 @@ export default function Route53Page({ showNotification }) {
             <div className="page-subtitle">{records.length} records · ID: {selectedZone.Id?.split('/').pop()}</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedZone(null)}>← Zones</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedZone(null)}>&#8592; Zones</button>
             <button className="btn btn-secondary btn-sm" onClick={() => loadRecords(selectedZone.Id)}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
             <button className="btn btn-primary" onClick={() => setShowCreateRecord(true)}><Plus size={14} /> Create record</button>
           </div>
         </div>
 
-        <div className="card">
-          {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-          : records.length === 0 ? (
-            <div className="empty-state"><Network size={40} /><h3>No records</h3>
-              <button className="btn btn-primary" onClick={() => setShowCreateRecord(true)}><Plus size={14} /> Create record</button>
-            </div>
-          ) : (
-            <table className="data-table">
-              <thead><tr><th>Record name</th><th>Type</th><th>TTL</th><th>Value / Routing</th></tr></thead>
-              <tbody>
-                {records.map((r, i) => (
-                  <tr key={i}>
-                    <td className="mono" style={{ fontSize: 12 }}>{r.Name}</td>
-                    <td><span className={`badge ${typeColor(r.Type)}`}>{r.Type}</span></td>
-                    <td>{r.TTL ?? <span className="badge badge-blue">Alias</span>}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>
-                      {r.AliasTarget ? r.AliasTarget.DNSName : (r.ResourceRecords || []).map(v => v.Value).join(', ')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          columns={recordColumns}
+          data={records}
+          loading={loading}
+          rowKey="Name"
+          emptyIcon={Network}
+          emptyTitle="No records"
+        />
 
         {showCreateRecord && (
           <div className="modal-overlay" onClick={() => setShowCreateRecord(false)}>
             <div className="modal" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <span className="modal-title">Create DNS Record</span>
-                <button className="close-btn" onClick={() => setShowCreateRecord(false)}><X size={16} /></button>
+                <button className="close-btn" onClick={() => setShowCreateRecord(false)}><span style={{ fontSize: 16 }}>&times;</span></button>
               </div>
               <div className="modal-body">
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
@@ -187,10 +183,19 @@ export default function Route53Page({ showNotification }) {
             </div>
           </div>
         )}
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
+
+  const zoneColumns = [
+    { key: 'Name', label: 'Domain name', render: (_, row) => <button className="link-btn" onClick={() => openZone(row)}>{getZoneName(row)}</button> },
+    { key: 'Id', label: 'Zone ID', mono: true, render: (v) => <span style={{ fontSize: 11 }}>{v?.split('/').pop()}</span> },
+    { key: '_type', label: 'Type', render: (_, row) => (
+      <span className={`badge ${row.Config?.PrivateZone ? 'badge-yellow' : 'badge-blue'}`}>{row.Config?.PrivateZone ? 'Private' : 'Public'}</span>
+    )},
+    { key: 'ResourceRecordSetCount', label: 'Record count' },
+  ];
 
   return (
     <div className="fade-in">
@@ -205,64 +210,34 @@ export default function Route53Page({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : zones.length === 0 ? (
-          <div className="empty-state">
-            <Network size={40} /><h3>No hosted zones</h3>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create hosted zone</button>
+      <DataTable
+        columns={zoneColumns}
+        data={zones}
+        loading={loading}
+        rowKey="Id"
+        emptyIcon={Network}
+        emptyTitle="No hosted zones"
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => openZone(row)}>Records</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteZone(row.Id, row.Name)}><Trash2 size={11} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Domain name</th><th>Zone ID</th><th>Type</th><th>Record count</th><th></th></tr></thead>
-            <tbody>
-              {zones.map(z => (
-                <tr key={z.Id}>
-                  <td><button className="link-btn" onClick={() => openZone(z)}>{getZoneName(z)}</button></td>
-                  <td className="mono" style={{ fontSize: 11 }}>{z.Id?.split('/').pop()}</td>
-                  <td><span className={`badge ${z.Config?.PrivateZone ? 'badge-yellow' : 'badge-blue'}`}>{z.Config?.PrivateZone ? 'Private' : 'Public'}</span></td>
-                  <td>{z.ResourceRecordSetCount}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openZone(z)}>Records</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteZone(z.Id, z.Name)}><Trash2 size={11} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create Hosted Zone</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Domain Name</label>
-                <input className="input" style={{ width: '100%' }} value={newZone.name}
-                  onChange={e => setNewZone({ ...newZone, name: e.target.value })} placeholder="example.com" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && createZone()} />
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={newZone.private} onChange={e => setNewZone({ ...newZone, private: e.target.checked })} />
-                <span className="form-label" style={{ margin: 0 }}>Private Zone</span>
-              </label>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createZone}>Create Zone</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create Hosted Zone"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={createZone}
+        fields={[
+          { name: 'name', label: 'Domain Name', required: true, placeholder: 'example.com' },
+        ]}
+        submitLabel="Create Zone"
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }
