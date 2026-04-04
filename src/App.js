@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { SettingsProvider } from './contexts/SettingsContext';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import Breadcrumb from './components/Breadcrumb';
@@ -134,6 +135,7 @@ export default function App() {
   };
 
   return (
+    <SettingsProvider>
     <div className="app-shell">
       <TopBar
         health={health}
@@ -173,5 +175,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </SettingsProvider>
   );
 }
