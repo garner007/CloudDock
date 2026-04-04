@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Dark background -->
+  <rect width="512" height="512" rx="112" fill="#16202D"/>
+
+  <!-- Bottom layer (widest, dark blue-grey) -->
+  <g transform="translate(256,320)">
+    <polygon points="-132,0 0,-44 132,0 0,44"  fill="#2d4a6e"/>
+    <polygon points="-132,0 0,44 0,88 -132,44" fill="#1a3050"/>
+    <polygon points="132,0 0,44 0,88 132,44"   fill="#243d5e"/>
+    <polyline points="-132,0 0,-44 132,0" fill="none" stroke="#FF9900" stroke-width="2.5" opacity="0.45"/>
+  </g>
+
+  <!-- Middle layer (orange — the highlighted "active" layer) -->
+  <g transform="translate(256,248)">
+    <polygon points="-110,0 0,-37 110,0 0,37"  fill="#FF9900"/>
+    <polygon points="-110,0 0,37 0,74 -110,37" fill="#b36b00"/>
+    <polygon points="110,0 0,37 0,74 110,37"   fill="#cc7a00"/>
+    <polyline points="-110,0 0,-37 110,0" fill="none" stroke="#ffd080" stroke-width="2" opacity="0.55"/>
+  </g>
+
+  <!-- Top layer (narrowest, dark blue-grey) -->
+  <g transform="translate(256,188)">
+    <polygon points="-80,0 0,-27 80,0 0,27"  fill="#2d4a6e"/>
+    <polygon points="-80,0 0,27 0,54 -80,27" fill="#1a3050"/>
+    <polygon points="80,0 0,27 0,54 80,27"   fill="#243d5e"/>
+    <polyline points="-80,0 0,-27 80,0" fill="none" stroke="#FF9900" stroke-width="2" opacity="0.5"/>
+  </g>
+
+  <!-- Floating endpoint dot — represents the live local AWS endpoint -->
+  <circle cx="256" cy="142" r="16" fill="#FF9900"/>
+  <circle cx="256" cy="142" r="9"  fill="#16202D"/>
+  <circle cx="256" cy="142" r="4"  fill="#FF9900"/>
+</svg>

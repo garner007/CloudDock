@@ -1,0 +1,93 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Unit Tests (no LocalStack needed) ────────────────────────────────────────
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        env:
+          CI: true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+
+  # ── Integration Tests (spins up LocalStack) ──────────────────────────────────
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3,dynamodb,sqs,sns,lambda,iam,secretsmanager,ssm,cloudwatch,cloudformation
+          DEBUG: 0
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/_localstack/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Wait for LocalStack to be ready
+        run: |
+          echo "Waiting for LocalStack..."
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4566/_localstack/health && break
+            echo "  attempt $i/30..."
+            sleep 3
+          done
+          curl -sf http://localhost:4566/_localstack/health
+          echo "LocalStack is ready!"
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          LS_ENDPOINT: http://localhost:4566
+          LS_REGION: us-east-1
+          LS_ACCESS_KEY: test
+          LS_SECRET_KEY: test
+
+      - name: Print LocalStack logs on failure
+        if: failure()
+        run: docker logs $(docker ps -q --filter "ancestor=localstack/localstack") 2>/dev/null || true

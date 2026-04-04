@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Amazon+Ember:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import './themes.css';
+
+/* Font variables — theme-independent, not defined in themes.css */
+:root {
+  --font-main: 'Amazon Ember', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--aws-sidebar);
+  color: var(--aws-text);
+  font-family: var(--font-main);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--aws-surface); }
+::-webkit-scrollbar-thumb { background: var(--aws-border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--aws-text-muted); }
+
+button { cursor: pointer; font-family: var(--font-main); }
+input, select, textarea { font-family: var(--font-main); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+.badge-green { background: rgba(29,185,84,0.15); color: var(--aws-green); border: 1px solid rgba(29,185,84,0.3); }
+.badge-red { background: rgba(229,62,62,0.15); color: var(--aws-red); border: 1px solid rgba(229,62,62,0.3); }
+.badge-yellow { background: rgba(246,201,14,0.15); color: var(--aws-yellow); border: 1px solid rgba(246,201,14,0.3); }
+.badge-blue { background: rgba(0,212,255,0.1); color: var(--aws-cyan); border: 1px solid rgba(0,212,255,0.2); }
+.badge-gray { background: rgba(139,158,176,0.15); color: var(--aws-text-dim); border: 1px solid var(--aws-border); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.spin { animation: spin 0.8s linear infinite; }
+.fade-in { animation: fadeIn 0.2s ease forwards; }

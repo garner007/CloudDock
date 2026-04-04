@@ -1,0 +1,88 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME SYSTEM
+   Theme is set by data-theme="dark" | "light" on <html>
+   System preference is detected via matchMedia and applied automatically.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Dark theme (default) ─────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  --aws-orange:       #FF9900;
+  --aws-orange-hover: #ec8c00;
+  --aws-blue:         #232F3E;
+  --aws-blue-light:   #37475A;
+
+  --aws-sidebar:      #16202D;
+  --aws-surface:      #1a2332;
+  --aws-surface-2:    #1e2a3a;
+  --aws-surface-3:    #243040;
+  --aws-border:       #2d3f55;
+  --aws-border-light: #3d5068;
+
+  --aws-text:         #e8eaed;
+  --aws-text-dim:     #c0c8d4;
+  --aws-text-muted:   #8b9eb0;
+
+  --aws-green:   #1db954;
+  --aws-red:     #e53e3e;
+  --aws-yellow:  #f6c90e;
+  --aws-cyan:    #00d4ff;
+  --aws-purple:  #9b59b6;
+
+  /* Shadows */
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
+  --shadow-md:  0 4px 20px rgba(0,0,0,0.4);
+  --shadow-lg:  0 8px 40px rgba(0,0,0,0.5);
+
+  /* Fonts — same in both themes */
+  --font-main: 'Amazon Ember', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  color-scheme: dark;
+}
+
+/* ── Light theme ──────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --aws-orange:       #E07B00;
+  --aws-orange-hover: #C96E00;
+  --aws-blue:         #FFFFFF;
+  --aws-blue-light:   #F3F4F6;
+
+  --aws-sidebar:      #F8F9FB;
+  --aws-surface:      #FFFFFF;
+  --aws-surface-2:    #F3F4F6;
+  --aws-surface-3:    #EAECEF;
+  --aws-border:       #D1D5DB;
+  --aws-border-light: #9CA3AF;
+
+  --aws-text:         #111827;
+  --aws-text-dim:     #374151;
+  --aws-text-muted:   #6B7280;
+
+  --aws-green:   #16a34a;
+  --aws-red:     #dc2626;
+  --aws-yellow:  #ca8a04;
+  --aws-cyan:    #0369a1;
+  --aws-purple:  #7c3aed;
+
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.08);
+  --shadow-md:  0 4px 20px rgba(0,0,0,0.12);
+  --shadow-lg:  0 8px 40px rgba(0,0,0,0.16);
+
+  color-scheme: light;
+}
+
+/* ── Smooth theme transition ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+/* Don't animate things where transition looks bad */
+input, textarea, select, button, svg, .spin, .modal-overlay {
+  transition: none !important;
+}
+button { transition: background-color 0.12s, border-color 0.12s, color 0.12s !important; }
