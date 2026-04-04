@@ -93,6 +93,11 @@ export default function App() {
 
   // Expose navigation bridge for Electron native menu
   useEffect(() => {
+    // Support Electron native menu navigation via IPC
+    if (window.electronAPI?.onNavigate) {
+      window.electronAPI.onNavigate((id) => navigateTo(id));
+    }
+    // Fallback for non-Electron environments (kept for dev mode)
     window.__navigateTo = (id) => navigateTo(id);
     return () => { delete window.__navigateTo; };
   }, [navigateTo]);

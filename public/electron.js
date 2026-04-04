@@ -72,7 +72,17 @@ ipcMain.handle('cred:get', (_, key) => credStore[key] ?? null);
 
 // IPC: renderer sets all credentials at once
 ipcMain.handle('cred:set', (_, map) => {
-  for (const [k, v] of Object.entries(map)) { credStore[k] = v; }
+  for (const [k, v] of Object.entries(map)) {
+    if (!CRED_KEYS.includes(k)) {
+      console.warn(`Rejected unknown credential key: ${k}`);
+      continue;
+    }
+    if (typeof v !== 'string') {
+      console.warn(`Rejected non-string credential value for key: ${k}`);
+      continue;
+    }
+    credStore[k] = v;
+  }
   saveCredentials();
   return true;
 });
@@ -110,7 +120,10 @@ function createWindow() {
       nodeIntegration:  false,
       contextIsolation: true,
       preload:          path.join(__dirname, 'preload.js'),
-      webSecurity:      false,   // allow LocalStack HTTP calls from file://
+      // SECURITY NOTE: Disabled to allow file:// origin to call LocalStack
+      // HTTP endpoints. Required for production builds. In a future version,
+      // consider using a local proxy or custom protocol handler instead.
+      webSecurity:      false,
     },
     icon:  iconPath || undefined,
     title: 'LocalStack Desktop',
@@ -142,8 +155,7 @@ function createWindow() {
 
 // ── Native menu ────────────────────────────────────────────────────────────────
 function buildMenu() {
-  const navigate = (id) =>
-    mainWindow?.webContents.executeJavaScript(`window.__navigateTo && window.__navigateTo('${id}')`);
+  const navigate = (id) => mainWindow?.webContents.send('navigate', id);
 
   const svcMenu = [
     { label: 'Dashboard', accelerator: 'CmdOrCtrl+Shift+H', click: () => navigate('dashboard') },
