@@ -206,5 +206,14 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "jest": {
+    "moduleNameMapper": {
+      "^@aws-sdk/client-s3$": "<rootDir>/src/mocks/aws-sdk-s3.js",
+      "^@aws-sdk/client-dynamodb$": "<rootDir>/src/mocks/aws-sdk-dynamodb.js",
+      "^@aws-sdk/util-dynamodb$": "<rootDir>/src/mocks/aws-sdk-dynamodb-util.js",
+      "^@aws-sdk/client-sqs$": "<rootDir>/src/mocks/aws-sdk-sqs.js",
+      "^@aws-sdk/client-lambda$": "<rootDir>/src/mocks/aws-sdk-lambda.js"
+    }
   }
 }

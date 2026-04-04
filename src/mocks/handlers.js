@@ -25,28 +25,23 @@ const healthHandler = rest.get(`${ENDPOINT}/_localstack/health`, (req, res, ctx)
 const s3Handlers = [
   // List buckets
   rest.get(ENDPOINT + '/', (req, res, ctx) =>
-    res(ctx.xml(`<?xml version="1.0"?>
-      <ListAllMyBucketsResult>
-        <Buckets>
-          <Bucket><Name>my-test-bucket</Name><CreationDate>2024-01-01T00:00:00Z</CreationDate></Bucket>
-          <Bucket><Name>another-bucket</Name><CreationDate>2024-01-02T00:00:00Z</CreationDate></Bucket>
-        </Buckets>
-      </ListAllMyBucketsResult>`))
+    res(ctx.json({
+      Buckets: [
+        { Name: 'my-test-bucket', CreationDate: '2024-01-01T00:00:00.000Z' },
+        { Name: 'another-bucket', CreationDate: '2024-01-02T00:00:00.000Z' },
+      ],
+    }))
   ),
   // List objects in bucket
   rest.get(`${ENDPOINT}/:bucket`, (req, res, ctx) =>
-    res(ctx.xml(`<?xml version="1.0"?>
-      <ListBucketResult>
-        <Name>${req.params.bucket}</Name>
-        <Contents>
-          <Key>hello.txt</Key><Size>12</Size><LastModified>2024-01-01T00:00:00Z</LastModified>
-          <StorageClass>STANDARD</StorageClass>
-        </Contents>
-        <Contents>
-          <Key>data/sample.json</Key><Size>256</Size><LastModified>2024-01-02T00:00:00Z</LastModified>
-          <StorageClass>STANDARD</StorageClass>
-        </Contents>
-      </ListBucketResult>`))
+    res(ctx.json({
+      Name: req.params.bucket,
+      IsTruncated: false,
+      Contents: [
+        { Key: 'hello.txt', Size: 12, LastModified: '2024-01-01T00:00:00.000Z', StorageClass: 'STANDARD' },
+        { Key: 'data/sample.json', Size: 256, LastModified: '2024-01-02T00:00:00.000Z', StorageClass: 'STANDARD' },
+      ],
+    }))
   ),
   // Create bucket
   rest.put(`${ENDPOINT}/:bucket`, (req, res, ctx) => res(ctx.status(200))),
@@ -55,101 +50,53 @@ const s3Handlers = [
 ];
 
 // ── DynamoDB ───────────────────────────────────────────────────────────────────
-const dynamoHandlers = [
-  rest.post(ENDPOINT + '/', (req, res, ctx) => {
-    const target = req.headers.get('x-amz-target') || '';
+const dynamoHandlers = [];
 
-    if (target.includes('ListTables')) {
-      return res(ctx.json({ TableNames: ['users', 'products', 'orders'] }));
-    }
-    if (target.includes('DescribeTable')) {
+// ── SQS ────────────────────────────────────────────────────────────────────────
+// Queue-specific endpoints for SQS operations on existing queues
+const sqsHandlers = [
+  rest.post(`${ENDPOINT}/000000000000/my-queue`, (req, res, ctx) => {
+    const target = req.headers.get('x-amz-target') || '';
+    if (target.includes('ReceiveMessage')) {
       return res(ctx.json({
-        Table: {
-          TableName: 'users',
-          TableStatus: 'ACTIVE',
-          ItemCount: 42,
-          TableSizeBytes: 4096,
-          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-          BillingModeSummary: { BillingMode: 'PAY_PER_REQUEST' },
+        Messages: [{
+          MessageId: 'msg-001',
+          ReceiptHandle: 'receipt-001',
+          Body: '{"hello":"world"}',
+          Attributes: { SentTimestamp: '1704067200000' },
+        }],
+      }));
+    }
+    if (target.includes('SendMessage')) {
+      return res(ctx.json({
+        MessageId: 'test-message-id-123',
+        MD5OfMessageBody: 'abc123',
+      }));
+    }
+    if (target.includes('GetQueueAttributes')) {
+      return res(ctx.json({
+        Attributes: {
+          ApproximateNumberOfMessages: '5',
+          ApproximateNumberOfMessagesNotVisible: '0',
+          ApproximateNumberOfMessagesDelayed: '0',
         },
-      }));
-    }
-    if (target.includes('CreateTable')) {
-      return res(ctx.json({
-        TableDescription: { TableName: 'new-table', TableStatus: 'CREATING' },
-      }));
-    }
-    if (target.includes('DeleteTable')) {
-      return res(ctx.json({ TableDescription: { TableStatus: 'DELETING' } }));
-    }
-    if (target.includes('Scan')) {
-      return res(ctx.json({
-        Items: [
-          { id: { S: 'user-1' }, name: { S: 'Alice' }, email: { S: 'alice@example.com' } },
-          { id: { S: 'user-2' }, name: { S: 'Bob' }, email: { S: 'bob@example.com' } },
-        ],
-        Count: 2,
       }));
     }
     return res(ctx.json({}));
   }),
-];
-
-// ── SQS ────────────────────────────────────────────────────────────────────────
-const sqsHandlers = [
-  rest.post(ENDPOINT + '/', (req, res, ctx) => {
-    const body = req.body?.toString() || '';
-    if (body.includes('Action=ListQueues')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <ListQueuesResponse>
-          <ListQueuesResult>
-            <QueueUrl>${ENDPOINT}/000000000000/my-queue</QueueUrl>
-            <QueueUrl>${ENDPOINT}/000000000000/my-fifo-queue.fifo</QueueUrl>
-          </ListQueuesResult>
-        </ListQueuesResponse>`));
+  rest.post(`${ENDPOINT}/000000000000/my-fifo-queue.fifo`, (req, res, ctx) => {
+    const target = req.headers.get('x-amz-target') || '';
+    if (target.includes('GetQueueAttributes')) {
+      return res(ctx.json({
+        Attributes: {
+          ApproximateNumberOfMessages: '3',
+          ApproximateNumberOfMessagesNotVisible: '0',
+          ApproximateNumberOfMessagesDelayed: '0',
+          FifoQueue: 'true',
+        },
+      }));
     }
-    if (body.includes('Action=GetQueueAttributes')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <GetQueueAttributesResponse>
-          <GetQueueAttributesResult>
-            <Attribute><Name>ApproximateNumberOfMessages</Name><Value>5</Value></Attribute>
-            <Attribute><Name>ApproximateNumberOfMessagesNotVisible</Name><Value>0</Value></Attribute>
-            <Attribute><Name>ApproximateNumberOfMessagesDelayed</Name><Value>0</Value></Attribute>
-          </GetQueueAttributesResult>
-        </GetQueueAttributesResponse>`));
-    }
-    if (body.includes('Action=CreateQueue')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <CreateQueueResponse>
-          <CreateQueueResult>
-            <QueueUrl>${ENDPOINT}/000000000000/new-queue</QueueUrl>
-          </CreateQueueResult>
-        </CreateQueueResponse>`));
-    }
-    if (body.includes('Action=SendMessage')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <SendMessageResponse>
-          <SendMessageResult>
-            <MessageId>test-message-id-123</MessageId>
-            <MD5OfMessageBody>abc123</MD5OfMessageBody>
-          </SendMessageResult>
-        </SendMessageResponse>`));
-    }
-    if (body.includes('Action=ReceiveMessage')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <ReceiveMessageResponse>
-          <ReceiveMessageResult>
-            <Message>
-              <MessageId>msg-001</MessageId>
-              <ReceiptHandle>receipt-001</ReceiptHandle>
-              <Body>{"hello":"world"}</Body>
-              <Attribute><Name>SentTimestamp</Name><Value>1704067200000</Value></Attribute>
-            </Message>
-          </ReceiveMessageResult>
-        </ReceiveMessageResponse>`));
-    }
-    return res(ctx.xml('<Response></Response>'));
+    return res(ctx.json({}));
   }),
 ];
 
@@ -230,53 +177,165 @@ const snsHandlers = [
 ];
 
 // ── IAM ─────────────────────────────────────────────────────────────────────────
-const iamHandlers = [
-  rest.post(`${ENDPOINT}/`, (req, res, ctx) => {
-    const body = req.body?.toString() || '';
-    if (body.includes('Action=ListUsers')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <ListUsersResponse>
-          <ListUsersResult>
-            <Users>
-              <member>
-                <UserId>AIDAAAAAAAAAAAAAAAAAA</UserId>
-                <UserName>admin</UserName>
-                <Arn>arn:aws:iam::000000000000:user/admin</Arn>
-                <CreateDate>2024-01-01T00:00:00Z</CreateDate>
-              </member>
-            </Users>
-          </ListUsersResult>
-        </ListUsersResponse>`));
+const iamHandlers = [];
+
+// ── Unified POST handler ────────────────────────────────────────────────────────
+// DynamoDB, SQS, and IAM all POST to the same endpoint.
+// We route based on x-amz-target header (DynamoDB, SQS) and body content (IAM query protocol).
+const unifiedPostHandler = rest.post(ENDPOINT + '/', (req, res, ctx) => {
+  const target = req.headers.get('x-amz-target') || '';
+  const contentType = req.headers.get('content-type') || '';
+  const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+
+  // ── DynamoDB (JSON protocol, x-amz-target: DynamoDB_20120810.*)
+  if (target.includes('DynamoDB')) {
+    if (target.includes('ListTables')) {
+      return res(ctx.json({ TableNames: ['users', 'products', 'orders'] }));
     }
-    if (body.includes('Action=ListRoles')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <ListRolesResponse>
-          <ListRolesResult>
-            <Roles>
-              <member>
-                <RoleId>AROAAAAAAAAAAAAAAAAAA</RoleId>
-                <RoleName>lambda-execution-role</RoleName>
-                <Arn>arn:aws:iam::000000000000:role/lambda-execution-role</Arn>
-                <CreateDate>2024-01-01T00:00:00Z</CreateDate>
-              </member>
-            </Roles>
-          </ListRolesResult>
-        </ListRolesResponse>`));
+    if (target.includes('DescribeTable')) {
+      return res(ctx.json({
+        Table: {
+          TableName: 'users',
+          TableStatus: 'ACTIVE',
+          ItemCount: 42,
+          TableSizeBytes: 4096,
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          BillingModeSummary: { BillingMode: 'PAY_PER_REQUEST' },
+        },
+      }));
     }
-    if (body.includes('Action=ListPolicies')) {
-      return res(ctx.xml(`<?xml version="1.0"?>
-        <ListPoliciesResponse><ListPoliciesResult><Policies/></ListPoliciesResult></ListPoliciesResponse>`));
+    if (target.includes('CreateTable')) {
+      return res(ctx.json({
+        TableDescription: { TableName: 'new-table', TableStatus: 'CREATING' },
+      }));
     }
-    return res(ctx.xml('<Response></Response>'));
-  }),
-];
+    if (target.includes('DeleteTable')) {
+      return res(ctx.json({ TableDescription: { TableStatus: 'DELETING' } }));
+    }
+    if (target.includes('Scan')) {
+      return res(ctx.json({
+        Items: [
+          { id: { S: 'user-1' }, name: { S: 'Alice' }, email: { S: 'alice@example.com' } },
+          { id: { S: 'user-2' }, name: { S: 'Bob' }, email: { S: 'bob@example.com' } },
+        ],
+        Count: 2,
+      }));
+    }
+    return res(ctx.json({}));
+  }
+
+  // ── SQS (JSON protocol, x-amz-target: AmazonSQS.*)
+  if (target.includes('AmazonSQS') || target.includes('SQS')) {
+    if (target.includes('ListQueues')) {
+      return res(ctx.json({
+        QueueUrls: [
+          `${ENDPOINT}/000000000000/my-queue`,
+          `${ENDPOINT}/000000000000/my-fifo-queue.fifo`,
+        ],
+      }));
+    }
+    if (target.includes('CreateQueue')) {
+      return res(ctx.json({
+        QueueUrl: `${ENDPOINT}/000000000000/new-queue`,
+      }));
+    }
+    if (target.includes('DeleteQueue')) {
+      return res(ctx.json({}));
+    }
+    return res(ctx.json({}));
+  }
+
+  // ── IAM (XML query protocol, body contains Action=)
+  if (body.includes('Action=ListUsers') || body.includes('Action%3DListUsers')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <ListUsersResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
+        <ListUsersResult>
+          <Users>
+            <member>
+              <UserId>AIDAAAAAAAAAAAAAAAAAA</UserId>
+              <UserName>admin</UserName>
+              <Arn>arn:aws:iam::000000000000:user/admin</Arn>
+              <CreateDate>2024-01-01T00:00:00Z</CreateDate>
+            </member>
+          </Users>
+        </ListUsersResult>
+      </ListUsersResponse>`));
+  }
+  if (body.includes('Action=ListRoles') || body.includes('Action%3DListRoles')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <ListRolesResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
+        <ListRolesResult>
+          <Roles>
+            <member>
+              <RoleId>AROAAAAAAAAAAAAAAAAAA</RoleId>
+              <RoleName>lambda-execution-role</RoleName>
+              <Arn>arn:aws:iam::000000000000:role/lambda-execution-role</Arn>
+              <CreateDate>2024-01-01T00:00:00Z</CreateDate>
+            </member>
+          </Roles>
+        </ListRolesResult>
+      </ListRolesResponse>`));
+  }
+  if (body.includes('Action=ListPolicies') || body.includes('Action%3DListPolicies')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <ListPoliciesResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
+        <ListPoliciesResult><Policies/></ListPoliciesResult>
+      </ListPoliciesResponse>`));
+  }
+  if (body.includes('Action=CreateUser') || body.includes('Action%3DCreateUser')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <CreateUserResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
+        <CreateUserResult><User><UserName>new-user</UserName></User></CreateUserResult>
+      </CreateUserResponse>`));
+  }
+  if (body.includes('Action=DeleteUser') || body.includes('Action%3DDeleteUser')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <DeleteUserResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
+        <ResponseMetadata><RequestId>test</RequestId></ResponseMetadata>
+      </DeleteUserResponse>`));
+  }
+  if (body.includes('Action=DeleteRole') || body.includes('Action%3DDeleteRole')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <DeleteRoleResponse xmlns="https://iam.amazonaws.com/doc/2010-05-08/">
+        <ResponseMetadata><RequestId>test</RequestId></ResponseMetadata>
+      </DeleteRoleResponse>`));
+  }
+
+  // ── STS (XML query protocol)
+  if (body.includes('Action=GetCallerIdentity') || body.includes('Action%3DGetCallerIdentity')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
+        <GetCallerIdentityResult>
+          <Account>000000000000</Account>
+          <Arn>arn:aws:iam::000000000000:root</Arn>
+          <UserId>AKIAIOSFODNN7EXAMPLE</UserId>
+        </GetCallerIdentityResult>
+      </GetCallerIdentityResponse>`));
+  }
+  if (body.includes('Action=GetSessionToken') || body.includes('Action%3DGetSessionToken')) {
+    return res(ctx.xml(`<?xml version="1.0" encoding="UTF-8"?>
+      <GetSessionTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
+        <GetSessionTokenResult>
+          <Credentials>
+            <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
+            <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
+            <SessionToken>FwoGZXIvYXdzEBAaDEXAMPLE</SessionToken>
+            <Expiration>2024-01-01T01:00:00Z</Expiration>
+          </Credentials>
+        </GetSessionTokenResult>
+      </GetSessionTokenResponse>`));
+  }
+
+  // Fallback — return empty JSON
+  return res(ctx.json({}));
+});
 
 export const handlers = [
   healthHandler,
   ...s3Handlers,
-  ...dynamoHandlers,
   ...sqsHandlers,
   ...lambdaHandlers,
   ...snsHandlers,
-  ...iamHandlers,
+  unifiedPostHandler,
 ];

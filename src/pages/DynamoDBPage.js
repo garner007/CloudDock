@@ -1,52 +1,58 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, RefreshCw, Plus, Trash2, X, Eye, AlertCircle } from 'lucide-react';
+import { Database, RefreshCw, Plus, Trash2, X, Eye } from 'lucide-react';
+import { DynamoDBClient, ListTablesCommand, DescribeTableCommand,
+         CreateTableCommand, DeleteTableCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
+import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { getConfig } from '../services/awsClients';
 import { validateTableName } from '../services/validation';
+import { fmtSize } from '../utils/formatters';
+import { useAwsResource } from '../hooks/useAwsResource';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import CreateModal from '../components/CreateModal';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
 
+const TABLE_STATUS_COLORS = {
+  ACTIVE: 'green',
+  CREATING: 'yellow',
+  DELETING: 'yellow',
+  UPDATING: 'yellow',
+};
+
 export default function DynamoDBPage({ showNotification }) {
-  const [tables, setTables] = useState([]);
   const { confirmDialog, requestConfirm } = useConfirm();
   const [tableDetails, setTableDetails] = useState({});
   const [selectedTable, setSelectedTable] = useState(null);
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [itemLoading, setItemLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [newTable, setNewTable] = useState({ name: '', hashKey: 'id', hashType: 'S' });
-  const [tableNameError, setTableNameError] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [tab, setTab] = useState('items');
 
-  const loadTables = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { DynamoDBClient, ListTablesCommand, DescribeTableCommand } = await import('@aws-sdk/client-dynamodb');
-      const client = new DynamoDBClient(getConfig());
-      const res = await client.send(new ListTablesCommand({}));
-      const names = res.TableNames || [];
-      setTables(names);
-      // Load details for each table
-      const details = {};
-      await Promise.all(names.map(async name => {
-        try {
-          const d = await client.send(new DescribeTableCommand({ TableName: name }));
-          details[name] = d.Table;
-        } catch {}
-      }));
-      setTableDetails(details);
-    } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
-  }, [showNotification]);
+  const loadTablesFn = useCallback(async () => {
+    const client = new DynamoDBClient(getConfig());
+    const res = await client.send(new ListTablesCommand({}));
+    const names = res.TableNames || [];
+    // Load details for each table
+    const details = {};
+    await Promise.all(names.map(async name => {
+      try {
+        const d = await client.send(new DescribeTableCommand({ TableName: name }));
+        details[name] = d.Table;
+      } catch {}
+    }));
+    setTableDetails(details);
+    return names;
+  }, []);
 
-  useEffect(() => { loadTables(); }, [loadTables]);
+  const { items: tables, loading, refresh: loadTables } = useAwsResource(loadTablesFn, {
+    onError: (e) => showNotification(e.message, 'error'),
+  });
 
   const loadItems = useCallback(async (tableName) => {
-    setLoading(true);
+    setItemLoading(true);
     try {
-      const { DynamoDBClient, ScanCommand } = await import('@aws-sdk/client-dynamodb');
-      const { unmarshall } = await import('@aws-sdk/util-dynamodb');
       const client = new DynamoDBClient(getConfig());
-      // Paginate through all results using LastEvaluatedKey
       const allItems = [];
       let lastKey = undefined;
       do {
@@ -57,28 +63,25 @@ export default function DynamoDBPage({ showNotification }) {
         }));
         (res.Items || []).forEach(item => allItems.push(unmarshall(item)));
         lastKey = res.LastEvaluatedKey;
-      } while (lastKey && allItems.length < 1000); // cap at 1000 to avoid freezing
+      } while (lastKey && allItems.length < 1000);
       setItems(allItems);
     } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
+    finally { setItemLoading(false); }
   }, [showNotification]);
 
-  const createTable = async () => {
-    const check = validateTableName(newTable.name);
-    if (!check.valid) { setTableNameError(check.error); return; }
-    setTableNameError('');
+  const createTable = async (values) => {
+    const check = validateTableName(values.tableName);
+    if (!check.valid) { showNotification(check.error, 'error'); return; }
     try {
-      const { DynamoDBClient, CreateTableCommand } = await import('@aws-sdk/client-dynamodb');
       const client = new DynamoDBClient(getConfig());
       await client.send(new CreateTableCommand({
-        TableName: newTable.name,
-        AttributeDefinitions: [{ AttributeName: newTable.hashKey, AttributeType: newTable.hashType }],
-        KeySchema: [{ AttributeName: newTable.hashKey, KeyType: 'HASH' }],
+        TableName: values.tableName,
+        AttributeDefinitions: [{ AttributeName: values.hashKey || 'id', AttributeType: values.hashType || 'S' }],
+        KeySchema: [{ AttributeName: values.hashKey || 'id', KeyType: 'HASH' }],
         BillingMode: 'PAY_PER_REQUEST',
       }));
-      showNotification(`Table "${newTable.name}" created`);
+      showNotification(`Table "${values.tableName}" created`);
       setShowCreate(false);
-      setNewTable({ name: '', hashKey: 'id', hashType: 'S' });
       loadTables();
     } catch (e) { showNotification(e.message, 'error'); }
   };
@@ -90,14 +93,12 @@ export default function DynamoDBPage({ showNotification }) {
       confirmLabel: 'Delete',
       onConfirm: async () => {
         try {
-        const { DynamoDBClient, DeleteTableCommand } = await import('@aws-sdk/client-dynamodb');
-        const client = new DynamoDBClient(getConfig());
-        await client.send(new DeleteTableCommand({ TableName: name }));
-        showNotification(`Table deleted`);
-        if (selectedTable === name) setSelectedTable(null);
-        loadTables();
+          const client = new DynamoDBClient(getConfig());
+          await client.send(new DeleteTableCommand({ TableName: name }));
+          showNotification(`Table deleted`);
+          if (selectedTable === name) setSelectedTable(null);
+          loadTables();
         } catch (e) { showNotification(e.message, 'error'); }
-
       },
     });
   };
@@ -122,6 +123,7 @@ export default function DynamoDBPage({ showNotification }) {
 
   const detail = selectedTable ? tableDetails[selectedTable] : null;
 
+  // ── Item browser view ─────────────────────────────────────────────────────────
   if (selectedTable) {
     const cols = getColumns(items);
     return (
@@ -132,9 +134,9 @@ export default function DynamoDBPage({ showNotification }) {
             <div className="page-subtitle">{items.length} items (scan limit 100)</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedTable(null)}>← Tables</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedTable(null)}>&larr; Tables</button>
             <button className="btn btn-secondary btn-sm" onClick={() => loadItems(selectedTable)}>
-              <RefreshCw size={13} className={loading ? 'spin' : ''} />
+              <RefreshCw size={13} className={itemLoading ? 'spin' : ''} />
             </button>
           </div>
         </div>
@@ -149,7 +151,7 @@ export default function DynamoDBPage({ showNotification }) {
 
         {tab === 'items' && (
           <div className="card">
-            {loading ? (
+            {itemLoading ? (
               <div className="loading-center"><RefreshCw size={16} className="spin" /> Scanning...</div>
             ) : items.length === 0 ? (
               <div className="empty-state"><Database size={40} /><h3>No items</h3><p>This table is empty.</p></div>
@@ -186,7 +188,7 @@ export default function DynamoDBPage({ showNotification }) {
               <div className="stats-row">
                 <div className="stat-card">
                   <div className="stat-label">Status</div>
-                  <div><span className={`badge ${detail.TableStatus === 'ACTIVE' ? 'badge-green' : 'badge-yellow'}`}>{detail.TableStatus}</span></div>
+                  <div><StatusBadge status={detail.TableStatus} colorMap={TABLE_STATUS_COLORS} /></div>
                 </div>
                 <div className="stat-card">
                   <div className="stat-label">Item Count</div>
@@ -195,7 +197,7 @@ export default function DynamoDBPage({ showNotification }) {
                 <div className="stat-card">
                   <div className="stat-label">Size</div>
                   <div className="stat-value" style={{ fontSize: 18 }}>
-                    {detail.TableSizeBytes ? `${(detail.TableSizeBytes / 1024).toFixed(1)} KB` : '0 B'}
+                    {detail.TableSizeBytes ? fmtSize(detail.TableSizeBytes) : '0 B'}
                   </div>
                 </div>
                 <div className="stat-card">
@@ -239,10 +241,41 @@ export default function DynamoDBPage({ showNotification }) {
             </div>
           </div>
         )}
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
+
+  // ── Table list (using DataTable) ──────────────────────────────────────────────
+  const tableData = tables.map(name => {
+    const d = tableDetails[name];
+    return {
+      name,
+      status: d?.TableStatus || '...',
+      itemCount: d?.ItemCount?.toLocaleString() ?? '...',
+      size: d?.TableSizeBytes != null ? fmtSize(d.TableSizeBytes) : '...',
+      billing: d?.BillingModeSummary?.BillingMode || 'PAY_PER_REQUEST',
+    };
+  });
+
+  const tableColumns = [
+    {
+      key: 'name', label: 'Table name',
+      render: (val) => (
+        <button className="link-btn" onClick={() => openTable(val)}>{val}</button>
+      ),
+    },
+    {
+      key: 'status', label: 'Status',
+      render: (val) => <StatusBadge status={val} colorMap={TABLE_STATUS_COLORS} />,
+    },
+    { key: 'itemCount', label: 'Items' },
+    { key: 'size', label: 'Size' },
+    {
+      key: 'billing', label: 'Billing',
+      render: (val) => <span className="badge badge-gray">{val}</span>,
+    },
+  ];
 
   return (
     <div className="fade-in">
@@ -257,97 +290,41 @@ export default function DynamoDBPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? (
-          <div className="loading-center"><RefreshCw size={16} className="spin" /> Loading tables...</div>
-        ) : tables.length === 0 ? (
-          <div className="empty-state">
-            <Database size={40} />
-            <h3>No tables</h3>
-            <p>Create your first DynamoDB table.</p>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create table</button>
+      <DataTable
+        columns={tableColumns}
+        data={tableData}
+        loading={loading}
+        rowKey="name"
+        emptyIcon={Database}
+        emptyTitle="No tables"
+        emptyDescription="Create your first DynamoDB table."
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => openTable(row.name)}>Browse</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteTable(row.name)}><Trash2 size={12} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr><th>Table name</th><th>Status</th><th>Items</th><th>Size</th><th>Billing</th><th></th></tr>
-            </thead>
-            <tbody>
-              {tables.map(name => {
-                const d = tableDetails[name];
-                return (
-                  <tr key={name}>
-                    <td>
-                      <button className="link-btn" onClick={() => openTable(name)}>{name}</button>
-                    </td>
-                    <td>
-                      <span className={`badge ${d?.TableStatus === 'ACTIVE' ? 'badge-green' : 'badge-yellow'}`}>
-                        {d?.TableStatus || '...'}
-                      </span>
-                    </td>
-                    <td>{d?.ItemCount?.toLocaleString() ?? '...'}</td>
-                    <td style={{ fontSize: 12 }}>
-                      {d?.TableSizeBytes != null ? `${(d.TableSizeBytes / 1024).toFixed(1)} KB` : '...'}
-                    </td>
-                    <td><span className="badge badge-gray">{d?.BillingModeSummary?.BillingMode || 'PAY_PER_REQUEST'}</span></td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => openTable(name)}>Browse</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => deleteTable(name)}><Trash2 size={12} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create DynamoDB Table</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Table Name</label>
-                <input className="input" style={{ width: '100%', borderColor: tableNameError ? 'var(--aws-red)' : undefined }}
-                  value={newTable.name}
-                  onChange={e => { setNewTable({ ...newTable, name: e.target.value }); if (tableNameError) setTableNameError(''); }}
-                  placeholder="my-table" autoFocus />
-                {tableNameError && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5, fontSize: 12, color: 'var(--aws-red)' }}>
-                    <AlertCircle size={12} /> {tableNameError}
-                  </div>
-                )}
-              </div>
-              <div className="form-group">
-                <label className="form-label">Partition Key Name</label>
-                <input className="input" style={{ width: '100%' }} value={newTable.hashKey}
-                  onChange={e => setNewTable({ ...newTable, hashKey: e.target.value })} placeholder="id" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Partition Key Type</label>
-                <select className="input" style={{ width: '100%' }} value={newTable.hashType}
-                  onChange={e => setNewTable({ ...newTable, hashType: e.target.value })}>
-                  <option value="S">String (S)</option>
-                  <option value="N">Number (N)</option>
-                  <option value="B">Binary (B)</option>
-                </select>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createTable}>Create Table</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create DynamoDB Table"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={createTable}
+        submitLabel="Create Table"
+        fields={[
+          { name: 'tableName', label: 'Table Name', placeholder: 'my-table', required: true },
+          { name: 'hashKey', label: 'Partition Key Name', placeholder: 'id', defaultValue: 'id' },
+          {
+            name: 'hashType', label: 'Partition Key Type', type: 'select',
+            options: ['S', 'N', 'B'],
+            defaultValue: 'S',
+          },
+        ]}
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;font-weight:500;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

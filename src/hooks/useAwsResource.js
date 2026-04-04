@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 /**
  * useAwsResource — shared hook for loading AWS resource lists.
@@ -17,6 +17,10 @@ export function useAwsResource(loadFn, { autoLoad = true, onError } = {}) {
   const [loading, setLoading] = useState(autoLoad);
   const [error, setError] = useState(null);
 
+  // Use a ref for onError to avoid re-creating refresh when onError changes
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -25,11 +29,11 @@ export function useAwsResource(loadFn, { autoLoad = true, onError } = {}) {
       setItems(data);
     } catch (err) {
       setError(err.message);
-      if (onError) onError(err);
+      if (onErrorRef.current) onErrorRef.current(err);
     } finally {
       setLoading(false);
     }
-  }, [loadFn, onError]);
+  }, [loadFn]);
 
   useEffect(() => {
     if (autoLoad) refresh();

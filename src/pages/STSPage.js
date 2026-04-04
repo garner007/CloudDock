@@ -1,30 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Ticket, RefreshCw, Copy } from 'lucide-react';
+import { STSClient, GetCallerIdentityCommand, GetSessionTokenCommand } from '@aws-sdk/client-sts';
 import { getConfig } from '../services/awsClients';
+import { useAwsResource } from '../hooks/useAwsResource';
 
 export default function STSPage({ showNotification }) {
-  const [identity, setIdentity] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [sessionToken, setSessionToken] = useState(null);
   const [fetching, setFetching] = useState(false);
 
-  const loadIdentity = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { STSClient, GetCallerIdentityCommand } = await import('@aws-sdk/client-sts');
-      const client = new STSClient(getConfig());
-      const res = await client.send(new GetCallerIdentityCommand({}));
-      setIdentity(res);
-    } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
-  }, [showNotification]);
+  const loadIdentityFn = useCallback(async () => {
+    const client = new STSClient(getConfig());
+    const res = await client.send(new GetCallerIdentityCommand({}));
+    return res;
+  }, []);
 
-  useEffect(() => { loadIdentity(); }, [loadIdentity]);
+  const { items: identity, loading, refresh: loadIdentity } = useAwsResource(loadIdentityFn, {
+    onError: (e) => showNotification(e.message, 'error'),
+  });
 
   const getSessionToken = async () => {
     setFetching(true);
     try {
-      const { STSClient, GetSessionTokenCommand } = await import('@aws-sdk/client-sts');
       const client = new STSClient(getConfig());
       const res = await client.send(new GetSessionTokenCommand({ DurationSeconds: 3600 }));
       setSessionToken(res.Credentials);
@@ -56,7 +52,6 @@ export default function STSPage({ showNotification }) {
         <button className="btn btn-secondary btn-sm" onClick={loadIdentity}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
       </div>
 
-      {/* Caller Identity */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header"><span className="card-title">GetCallerIdentity</span></div>
         <div style={{ padding: 20 }}>
@@ -73,7 +68,6 @@ export default function STSPage({ showNotification }) {
         </div>
       </div>
 
-      {/* Session Token */}
       <div className="card">
         <div className="card-header">
           <span className="card-title">GetSessionToken</span>
@@ -101,7 +95,7 @@ export AWS_SESSION_TOKEN="${sessionToken.SessionToken}"`}</pre>
             </>
           ) : (
             <p style={{ fontSize: 13, color: 'var(--aws-text-muted)' }}>
-              Click "Get Session Token" to generate temporary credentials (valid 1 hour). 
+              Click "Get Session Token" to generate temporary credentials (valid 1 hour).
               In LocalStack these are simulated and don't expire.
             </p>
           )}

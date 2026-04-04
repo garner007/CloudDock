@@ -1,30 +1,44 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Box, RefreshCw, Trash2, X, Play, Eye } from 'lucide-react';
+import { LambdaClient, ListFunctionsCommand, DeleteFunctionCommand,
+         InvokeCommand } from '@aws-sdk/client-lambda';
 import { getConfig } from '../services/awsClients';
+import { useAwsResource } from '../hooks/useAwsResource';
+import DataTable from '../components/DataTable';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
 
+const RUNTIME_COLORS = {
+  python: 'badge-blue',
+  node: 'badge-green',
+  java: 'badge-yellow',
+  go: 'badge-blue',
+};
+
+function runtimeColor(rt) {
+  if (!rt) return 'badge-gray';
+  for (const [key, cls] of Object.entries(RUNTIME_COLORS)) {
+    if (rt.includes(key)) return cls;
+  }
+  return 'badge-gray';
+}
+
 export default function LambdaPage({ showNotification }) {
-  const [functions, setFunctions] = useState([]);
   const { confirmDialog, requestConfirm } = useConfirm();
-  const [loading, setLoading] = useState(false);
   const [selectedFn, setSelectedFn] = useState(null);
   const [invokePayload, setInvokePayload] = useState('{}');
   const [invokeResult, setInvokeResult] = useState(null);
   const [showInvoke, setShowInvoke] = useState(false);
   const [invoking, setInvoking] = useState(false);
 
-  const loadFunctions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { LambdaClient, ListFunctionsCommand } = await import('@aws-sdk/client-lambda');
-      const client = new LambdaClient(getConfig());
-      const res = await client.send(new ListFunctionsCommand({ MaxItems: 100 }));
-      setFunctions(res.Functions || []);
-    } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
-  }, [showNotification]);
+  const loadFunctionsFn = useCallback(async () => {
+    const client = new LambdaClient(getConfig());
+    const res = await client.send(new ListFunctionsCommand({ MaxItems: 100 }));
+    return res.Functions || [];
+  }, []);
 
-  useEffect(() => { loadFunctions(); }, [loadFunctions]);
+  const { items: functions, loading, refresh: loadFunctions } = useAwsResource(loadFunctionsFn, {
+    onError: (e) => showNotification(e.message, 'error'),
+  });
 
   const deleteFunction = (name) => {
     requestConfirm({
@@ -33,13 +47,11 @@ export default function LambdaPage({ showNotification }) {
       confirmLabel: 'Delete',
       onConfirm: async () => {
         try {
-        const { LambdaClient, DeleteFunctionCommand } = await import('@aws-sdk/client-lambda');
-        const client = new LambdaClient(getConfig());
-        await client.send(new DeleteFunctionCommand({ FunctionName: name }));
-        showNotification(`Function deleted`);
-        loadFunctions();
+          const client = new LambdaClient(getConfig());
+          await client.send(new DeleteFunctionCommand({ FunctionName: name }));
+          showNotification(`Function deleted`);
+          loadFunctions();
         } catch (e) { showNotification(e.message, 'error'); }
-
       },
     });
   };
@@ -48,7 +60,6 @@ export default function LambdaPage({ showNotification }) {
     setInvoking(true);
     setInvokeResult(null);
     try {
-      const { LambdaClient, InvokeCommand } = await import('@aws-sdk/client-lambda');
       const client = new LambdaClient(getConfig());
       const res = await client.send(new InvokeCommand({
         FunctionName: selectedFn.FunctionName,
@@ -67,14 +78,37 @@ export default function LambdaPage({ showNotification }) {
     finally { setInvoking(false); }
   };
 
-  const runtimeColor = (rt) => {
-    if (!rt) return 'badge-gray';
-    if (rt.includes('python')) return 'badge-blue';
-    if (rt.includes('node')) return 'badge-green';
-    if (rt.includes('java')) return 'badge-yellow';
-    if (rt.includes('go')) return 'badge-blue';
-    return 'badge-gray';
-  };
+  const fnColumns = [
+    {
+      key: 'FunctionName', label: 'Function name',
+      render: (val, row) => (
+        <button className="link-btn" onClick={() => { setSelectedFn(row); setShowInvoke(true); }}>
+          {val}
+        </button>
+      ),
+    },
+    {
+      key: 'Runtime', label: 'Runtime',
+      render: (val) => <span className={`badge ${runtimeColor(val)}`}>{val || 'N/A'}</span>,
+    },
+    { key: 'Handler', label: 'Handler', mono: true },
+    {
+      key: 'MemorySize', label: 'Memory',
+      render: (val) => val ? `${val} MB` : '-',
+    },
+    {
+      key: 'Timeout', label: 'Timeout',
+      render: (val) => val ? `${val}s` : '-',
+    },
+    {
+      key: 'LastModified', label: 'Last Modified',
+      render: (val) => (
+        <span style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>
+          {val ? new Date(val).toLocaleDateString() : '-'}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="fade-in">
@@ -88,52 +122,28 @@ export default function LambdaPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? (
-          <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        ) : functions.length === 0 ? (
-          <div className="empty-state">
-            <Box size={40} />
-            <h3>No functions</h3>
-            <p>Deploy Lambda functions to LocalStack to see them here.</p>
+      <DataTable
+        columns={fnColumns}
+        data={functions}
+        loading={loading}
+        rowKey="FunctionName"
+        emptyIcon={Box}
+        emptyTitle="No functions"
+        emptyDescription="Deploy Lambda functions to LocalStack to see them here."
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => { setSelectedFn(row); setInvokePayload('{}'); setInvokeResult(null); setShowInvoke(true); }}>
+              <Play size={11} /> Invoke
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setSelectedFn(row); setShowInvoke(true); }}>
+              <Eye size={11} />
+            </button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteFunction(row.FunctionName)}>
+              <Trash2 size={11} />
+            </button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Function name</th><th>Runtime</th><th>Handler</th><th>Memory</th><th>Timeout</th><th>Last Modified</th><th></th></tr></thead>
-            <tbody>
-              {functions.map(fn => (
-                <tr key={fn.FunctionName}>
-                  <td>
-                    <button className="link-btn" onClick={() => { setSelectedFn(fn); setShowInvoke(true); }}>
-                      {fn.FunctionName}
-                    </button>
-                  </td>
-                  <td><span className={`badge ${runtimeColor(fn.Runtime)}`}>{fn.Runtime || 'N/A'}</span></td>
-                  <td className="mono" style={{ fontSize: 11 }}>{fn.Handler || '-'}</td>
-                  <td>{fn.MemorySize ? `${fn.MemorySize} MB` : '-'}</td>
-                  <td>{fn.Timeout ? `${fn.Timeout}s` : '-'}</td>
-                  <td style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>
-                    {fn.LastModified ? new Date(fn.LastModified).toLocaleDateString() : '-'}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-primary btn-sm" onClick={() => { setSelectedFn(fn); setInvokePayload('{}'); setInvokeResult(null); setShowInvoke(true); }}>
-                        <Play size={11} /> Invoke
-                      </button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setSelectedFn(fn); setShowInvoke(true); }}>
-                        <Eye size={11} />
-                      </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteFunction(fn.FunctionName)}>
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
       {showInvoke && selectedFn && (
         <div className="modal-overlay" onClick={() => { setShowInvoke(false); setInvokeResult(null); }}>
@@ -187,7 +197,7 @@ export default function LambdaPage({ showNotification }) {
         </div>
       )}
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

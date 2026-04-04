@@ -1,61 +1,58 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Layers, RefreshCw, Plus, Trash2, X, Send, Eye, AlertCircle } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Layers, RefreshCw, Plus, Trash2, X, Send, Eye } from 'lucide-react';
+import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand,
+         CreateQueueCommand, DeleteQueueCommand,
+         ReceiveMessageCommand, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { getConfig } from '../services/awsClients';
 import { validateQueueName } from '../services/validation';
+import { useAwsResource } from '../hooks/useAwsResource';
+import DataTable from '../components/DataTable';
+import CreateModal from '../components/CreateModal';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
 
 export default function SQSPage({ showNotification }) {
-  const [queues, setQueues] = useState([]);
   const { confirmDialog, requestConfirm } = useConfirm();
   const [queueAttrs, setQueueAttrs] = useState({});
-  const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [newQueue, setNewQueue] = useState({ name: '', fifo: false });
-  const [queueNameError, setQueueNameError] = useState('');
   const [selectedQueue, setSelectedQueue] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [msgLoading, setMsgLoading] = useState(false);
   const [sendMsg, setSendMsg] = useState('');
   const [showSend, setShowSend] = useState(false);
 
-  const loadQueues = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { SQSClient, ListQueuesCommand, GetQueueAttributesCommand } = await import('@aws-sdk/client-sqs');
-      const client = new SQSClient(getConfig());
-      const res = await client.send(new ListQueuesCommand({ MaxResults: 100 }));
-      const urls = res.QueueUrls || [];
-      setQueues(urls);
-      const attrs = {};
-      await Promise.all(urls.map(async url => {
-        try {
-          const a = await client.send(new GetQueueAttributesCommand({
-            QueueUrl: url,
-            AttributeNames: ['All'],
-          }));
-          attrs[url] = a.Attributes || {};
-        } catch {}
-      }));
-      setQueueAttrs(attrs);
-    } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
-  }, [showNotification]);
+  const loadQueuesFn = useCallback(async () => {
+    const client = new SQSClient(getConfig());
+    const res = await client.send(new ListQueuesCommand({ MaxResults: 100 }));
+    const urls = res.QueueUrls || [];
+    const attrs = {};
+    await Promise.all(urls.map(async url => {
+      try {
+        const a = await client.send(new GetQueueAttributesCommand({
+          QueueUrl: url,
+          AttributeNames: ['All'],
+        }));
+        attrs[url] = a.Attributes || {};
+      } catch {}
+    }));
+    setQueueAttrs(attrs);
+    return urls;
+  }, []);
 
-  useEffect(() => { loadQueues(); }, [loadQueues]);
+  const { items: queues, loading, refresh: loadQueues } = useAwsResource(loadQueuesFn, {
+    onError: (e) => showNotification(e.message, 'error'),
+  });
 
-  const createQueue = async () => {
-    const check = validateQueueName(newQueue.name, newQueue.fifo);
-    if (!check.valid) { setQueueNameError(check.error); return; }
-    setQueueNameError('');
+  const createQueue = async (values) => {
+    const check = validateQueueName(values.queueName, values.fifo === 'true');
+    if (!check.valid) { showNotification(check.error, 'error'); return; }
     try {
-      const { SQSClient, CreateQueueCommand } = await import('@aws-sdk/client-sqs');
       const client = new SQSClient(getConfig());
-      const name = newQueue.fifo && !newQueue.name.endsWith('.fifo')
-        ? newQueue.name + '.fifo' : newQueue.name;
-      const attrs = newQueue.fifo ? { FifoQueue: 'true' } : {};
+      const name = values.fifo === 'true' && !values.queueName.endsWith('.fifo')
+        ? values.queueName + '.fifo' : values.queueName;
+      const attrs = values.fifo === 'true' ? { FifoQueue: 'true' } : {};
       await client.send(new CreateQueueCommand({ QueueName: name, Attributes: attrs }));
       showNotification(`Queue "${name}" created`);
       setShowCreate(false);
-      setNewQueue({ name: '', fifo: false });
       loadQueues();
     } catch (e) { showNotification(e.message, 'error'); }
   };
@@ -68,7 +65,6 @@ export default function SQSPage({ showNotification }) {
       confirmLabel: 'Delete',
       onConfirm: async () => {
         try {
-          const { SQSClient, DeleteQueueCommand } = await import('@aws-sdk/client-sqs');
           const client = new SQSClient(getConfig());
           await client.send(new DeleteQueueCommand({ QueueUrl: url }));
           showNotification('Queue deleted');
@@ -81,9 +77,8 @@ export default function SQSPage({ showNotification }) {
 
   const peekMessages = async (url) => {
     setSelectedQueue(url);
-    setLoading(true);
+    setMsgLoading(true);
     try {
-      const { SQSClient, ReceiveMessageCommand } = await import('@aws-sdk/client-sqs');
       const client = new SQSClient(getConfig());
       const res = await client.send(new ReceiveMessageCommand({
         QueueUrl: url,
@@ -95,13 +90,12 @@ export default function SQSPage({ showNotification }) {
       }));
       setMessages(res.Messages || []);
     } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
+    finally { setMsgLoading(false); }
   };
 
   const sendMessage = async () => {
     if (!sendMsg.trim()) return;
     try {
-      const { SQSClient, SendMessageCommand } = await import('@aws-sdk/client-sqs');
       const client = new SQSClient(getConfig());
       await client.send(new SendMessageCommand({ QueueUrl: selectedQueue, MessageBody: sendMsg }));
       showNotification('Message sent');
@@ -114,6 +108,7 @@ export default function SQSPage({ showNotification }) {
   const getName = (url) => url.split('/').pop();
   const getAttr = (url, key) => queueAttrs[url]?.[key];
 
+  // ── Queue detail view ─────────────────────────────────────────────────────────
   if (selectedQueue) {
     const name = getName(selectedQueue);
     const attrs = queueAttrs[selectedQueue] || {};
@@ -127,9 +122,9 @@ export default function SQSPage({ showNotification }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedQueue(null)}>← Queues</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedQueue(null)}>&larr; Queues</button>
             <button className="btn btn-secondary btn-sm" onClick={() => peekMessages(selectedQueue)}>
-              <RefreshCw size={13} className={loading ? 'spin' : ''} />
+              <RefreshCw size={13} className={msgLoading ? 'spin' : ''} />
             </button>
             <button className="btn btn-primary" onClick={() => setShowSend(true)}>
               <Send size={13} /> Send message
@@ -160,7 +155,7 @@ export default function SQSPage({ showNotification }) {
           <div className="card-header">
             <span className="card-title">Messages (peek, visibility=0)</span>
           </div>
-          {loading ? (
+          {msgLoading ? (
             <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
           ) : messages.length === 0 ? (
             <div className="empty-state"><Layers size={30} /><h3>No messages</h3><p>The queue appears empty.</p></div>
@@ -194,7 +189,7 @@ export default function SQSPage({ showNotification }) {
                   <label className="form-label">Message Body</label>
                   <textarea className="input" style={{ width: '100%', minHeight: 120, resize: 'vertical' }}
                     value={sendMsg} onChange={e => setSendMsg(e.target.value)}
-                    placeholder='{"key": "value"}' autoFocus />
+                    placeholder='Message body' autoFocus />
                 </div>
               </div>
               <div className="modal-footer">
@@ -204,10 +199,32 @@ export default function SQSPage({ showNotification }) {
             </div>
           </div>
         )}
-            {confirmDialog}
-</div>
+        {confirmDialog}
+      </div>
     );
   }
+
+  // ── Queue list (using DataTable) ──────────────────────────────────────────────
+  const queueData = queues.map(url => ({
+    url,
+    name: getName(url),
+    type: getAttr(url, 'FifoQueue') === 'true' ? 'FIFO' : 'Standard',
+    messages: getAttr(url, 'ApproximateNumberOfMessages') || '0',
+    urlDisplay: url.slice(0, 50) + '...',
+  }));
+
+  const queueColumns = [
+    {
+      key: 'name', label: 'Queue name',
+      render: (val, row) => <button className="link-btn" onClick={() => peekMessages(row.url)}>{val}</button>,
+    },
+    {
+      key: 'type', label: 'Type',
+      render: (val) => <span className="badge badge-blue">{val}</span>,
+    },
+    { key: 'messages', label: 'Messages' },
+    { key: 'urlDisplay', label: 'URL', mono: true },
+  ];
 
   return (
     <div className="fade-in">
@@ -222,72 +239,35 @@ export default function SQSPage({ showNotification }) {
         </div>
       </div>
 
-      <div className="card">
-        {loading ? (
-          <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        ) : queues.length === 0 ? (
-          <div className="empty-state"><Layers size={40} /><h3>No queues</h3>
-            <button className="btn btn-primary" onClick={() => setShowCreate(true)}><Plus size={14} /> Create queue</button>
+      <DataTable
+        columns={queueColumns}
+        data={queueData}
+        loading={loading}
+        rowKey="url"
+        emptyIcon={Layers}
+        emptyTitle="No queues"
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => peekMessages(row.url)}><Eye size={12} /> Peek</button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteQueue(row.url)}><Trash2 size={12} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Queue name</th><th>Type</th><th>Messages</th><th>URL</th><th></th></tr></thead>
-            <tbody>
-              {queues.map(url => (
-                <tr key={url}>
-                  <td><button className="link-btn" onClick={() => peekMessages(url)}>{getName(url)}</button></td>
-                  <td><span className="badge badge-blue">{getAttr(url, 'FifoQueue') === 'true' ? 'FIFO' : 'Standard'}</span></td>
-                  <td>{getAttr(url, 'ApproximateNumberOfMessages') || '0'}</td>
-                  <td className="mono" style={{ fontSize: 11, color: 'var(--aws-text-muted)' }}>{url.slice(0, 50)}...</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => peekMessages(url)}><Eye size={12} /> Peek</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteQueue(url)}><Trash2 size={12} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create SQS Queue</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Queue Name</label>
-                <input className="input" style={{ width: '100%', borderColor: queueNameError ? 'var(--aws-red)' : undefined }}
-                  value={newQueue.name}
-                  onChange={e => { setNewQueue({ ...newQueue, name: e.target.value }); if (queueNameError) setQueueNameError(''); }}
-                  placeholder="my-queue" autoFocus />
-                {queueNameError && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5, fontSize: 12, color: 'var(--aws-red)' }}>
-                    <AlertCircle size={12} /> {queueNameError}
-                  </div>
-                )}
-              </div>
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={newQueue.fifo} onChange={e => setNewQueue({ ...newQueue, fifo: e.target.checked })} />
-                  <span className="form-label" style={{ margin: 0 }}>FIFO Queue</span>
-                </label>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createQueue}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create SQS Queue"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={createQueue}
+        submitLabel="Create"
+        fields={[
+          { name: 'queueName', label: 'Queue Name', placeholder: 'my-queue', required: true },
+          { name: 'fifo', label: 'FIFO Queue', type: 'select', options: ['false', 'true'], defaultValue: 'false' },
+        ]}
+      />
+
       <style>{`.link-btn{background:none;border:none;color:var(--aws-cyan);cursor:pointer;font-size:13px;} .link-btn:hover{text-decoration:underline;}`}</style>
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

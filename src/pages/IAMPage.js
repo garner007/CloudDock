@@ -1,45 +1,48 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ShieldCheck, RefreshCw, Plus, Trash2, X, User, Users, Key } from 'lucide-react';
+import { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand,
+         CreateUserCommand, DeleteUserCommand, DeleteRoleCommand } from '@aws-sdk/client-iam';
 import { getConfig } from '../services/awsClients';
+import { fmtDate } from '../utils/formatters';
+import { useAwsResource } from '../hooks/useAwsResource';
+import CreateModal from '../components/CreateModal';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
 
 export default function IAMPage({ showNotification }) {
   const [tab, setTab] = useState('users');
   const { confirmDialog, requestConfirm } = useConfirm();
-  const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [policies, setPolicies] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { IAMClient, ListUsersCommand, ListRolesCommand, ListPoliciesCommand } = await import('@aws-sdk/client-iam');
-      const client = new IAMClient(getConfig());
-      const [u, r, p] = await Promise.all([
-        client.send(new ListUsersCommand({})),
-        client.send(new ListRolesCommand({})),
-        client.send(new ListPoliciesCommand({ Scope: 'Local' })),
-      ]);
-      setUsers(u.Users || []);
-      setRoles(r.Roles || []);
-      setPolicies(p.Policies || []);
-    } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
-  }, [showNotification]);
+  const loadFn = useCallback(async () => {
+    const client = new IAMClient(getConfig());
+    const [u, r, p] = await Promise.all([
+      client.send(new ListUsersCommand({})),
+      client.send(new ListRolesCommand({})),
+      client.send(new ListPoliciesCommand({ Scope: 'Local' })),
+    ]);
+    return {
+      users: u.Users || [],
+      roles: r.Roles || [],
+      policies: p.Policies || [],
+    };
+  }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const { items: data, loading, refresh: load } = useAwsResource(loadFn, {
+    onError: (e) => showNotification(e.message, 'error'),
+  });
 
-  const createUser = async () => {
+  const users = data?.users || [];
+  const roles = data?.roles || [];
+  const policies = data?.policies || [];
+
+  const createUser = async (values) => {
     try {
-      const { IAMClient, CreateUserCommand } = await import('@aws-sdk/client-iam');
       const client = new IAMClient(getConfig());
-      await client.send(new CreateUserCommand({ UserName: newName }));
-      showNotification(`User "${newName}" created`);
-      setShowCreate(false); setNewName(''); load();
+      await client.send(new CreateUserCommand({ UserName: values.username }));
+      showNotification(`User "${values.username}" created`);
+      setShowCreate(false);
+      load();
     } catch (e) { showNotification(e.message, 'error'); }
   };
 
@@ -50,12 +53,11 @@ export default function IAMPage({ showNotification }) {
       confirmLabel: 'Delete',
       onConfirm: async () => {
         try {
-        const { IAMClient, DeleteUserCommand } = await import('@aws-sdk/client-iam');
-        const client = new IAMClient(getConfig());
-        await client.send(new DeleteUserCommand({ UserName: name }));
-        showNotification('User deleted'); load();
+          const client = new IAMClient(getConfig());
+          await client.send(new DeleteUserCommand({ UserName: name }));
+          showNotification('User deleted');
+          load();
         } catch (e) { showNotification(e.message, 'error'); }
-
       },
     });
   };
@@ -67,24 +69,21 @@ export default function IAMPage({ showNotification }) {
       confirmLabel: 'Delete',
       onConfirm: async () => {
         try {
-        const { IAMClient, DeleteRoleCommand } = await import('@aws-sdk/client-iam');
-        const client = new IAMClient(getConfig());
-        await client.send(new DeleteRoleCommand({ RoleName: name }));
-        showNotification('Role deleted'); load();
+          const client = new IAMClient(getConfig());
+          await client.send(new DeleteRoleCommand({ RoleName: name }));
+          showNotification('Role deleted');
+          load();
         } catch (e) { showNotification(e.message, 'error'); }
-
       },
     });
   };
-
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString() : '-';
 
   return (
     <div className="fade-in">
       <div className="page-header">
         <div>
           <div className="page-title"><ShieldCheck size={20} /> IAM</div>
-          <div className="page-subtitle">{users.length} users · {roles.length} roles · {policies.length} policies</div>
+          <div className="page-subtitle">{users.length} users &middot; {roles.length} roles &middot; {policies.length} policies</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
@@ -175,28 +174,16 @@ export default function IAMPage({ showNotification }) {
         )}
       </div>
 
-      {showCreate && (
-        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Create IAM User</span>
-              <button className="close-btn" onClick={() => setShowCreate(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Username</label>
-                <input className="input" style={{ width: '100%' }} value={newName}
-                  onChange={e => setNewName(e.target.value)} placeholder="my-user" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && createUser()} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createUser}>Create User</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Create IAM User"
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSubmit={createUser}
+        submitLabel="Create User"
+        fields={[
+          { name: 'username', label: 'Username', placeholder: 'my-user', required: true },
+        ]}
+      />
 
       {selectedItem && (
         <div className="modal-overlay" onClick={() => setSelectedItem(null)}>
@@ -214,7 +201,7 @@ export default function IAMPage({ showNotification }) {
           </div>
         </div>
       )}
-          {confirmDialog}
+      {confirmDialog}
     </div>
   );
 }

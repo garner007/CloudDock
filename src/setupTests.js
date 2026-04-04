@@ -2,6 +2,14 @@
 import '@testing-library/jest-dom';
 import { server } from './mocks/server';
 
+// ── TextEncoder/TextDecoder polyfill ───────────────────────────────────────────
+// jsdom doesn't provide these; needed for AWS SDK and Lambda invoke payloads
+if (typeof global.TextEncoder === 'undefined') {
+  const { TextEncoder, TextDecoder } = require('util');
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
+}
+
 // ── MSW lifecycle ──────────────────────────────────────────────────────────────
 // Start server before all tests, reset handlers after each, close after all
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));

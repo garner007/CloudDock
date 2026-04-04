@@ -27,9 +27,11 @@ describe('TopBar', () => {
     expect(screen.getByText('Desktop')).toBeInTheDocument();
   });
 
-  test('shows Connected when health status is connected', () => {
+  test('shows connected indicator when health status is connected', () => {
     renderTopBar({ health: mockHealth });
-    expect(screen.getByText('Connected')).toBeInTheDocument();
+    // TopBar shows backend name (e.g. "LocalStack") when connected
+    const healthIndicator = document.querySelector('.health-indicator.connected');
+    expect(healthIndicator).toBeInTheDocument();
   });
 
   test('shows Offline when health status is disconnected', () => {
@@ -73,24 +75,15 @@ describe('TopBar', () => {
     localStorage.clear();
   });
 
-  test('filters services in search box', async () => {
+  test('shows command palette trigger', () => {
     renderTopBar();
-    const searchInput = screen.getByPlaceholderText('Search services...');
-    fireEvent.focus(searchInput);
-    fireEvent.change(searchInput, { target: { value: 'dynamo' } });
-    await waitFor(() => {
-      expect(screen.getByText('DynamoDB')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Search services…')).toBeInTheDocument();
   });
 
-  test('navigates when a search result is clicked', async () => {
-    const onNavigate = jest.fn();
-    renderTopBar({ onNavigate });
-    const searchInput = screen.getByPlaceholderText('Search services...');
-    fireEvent.focus(searchInput);
-    fireEvent.change(searchInput, { target: { value: 'lambda' } });
-    await waitFor(() => screen.getByText('Lambda'));
-    fireEvent.mouseDown(screen.getByText('Lambda'));
-    expect(onNavigate).toHaveBeenCalledWith('lambda');
+  test('calls onOpenPalette when search trigger is clicked', () => {
+    const onOpenPalette = jest.fn();
+    renderTopBar({ onOpenPalette });
+    fireEvent.click(screen.getByText('Search services…'));
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
   });
 });

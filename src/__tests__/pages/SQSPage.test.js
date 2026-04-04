@@ -3,6 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SQSPage from '../../pages/SQSPage';
 
+// AWS SDK is auto-mocked via moduleNameMapper in package.json
+
 describe('SQSPage', () => {
   test('renders page title', () => {
     render(<SQSPage showNotification={jest.fn()} />);
@@ -24,13 +26,11 @@ describe('SQSPage', () => {
     });
   });
 
-  test('shows FIFO badge for .fifo queues', async () => {
+  test('shows type badges for queues', async () => {
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-fifo-queue.fifo'));
-    // Both queues use the same mock handler so both show Standard
-    // but the name check is sufficient
-    const fifoBadges = screen.getAllByText(/FIFO|Standard/);
-    expect(fifoBadges.length).toBeGreaterThan(0);
+    await waitFor(() => screen.getByText('my-queue'));
+    const typeBadges = screen.getAllByText(/FIFO|Standard/);
+    expect(typeBadges.length).toBeGreaterThan(0);
   });
 
   test('opens create queue modal', async () => {
@@ -41,13 +41,12 @@ describe('SQSPage', () => {
     expect(screen.getByText('Create SQS Queue')).toBeInTheDocument();
   });
 
-  test('has FIFO checkbox in create modal', async () => {
+  test('has FIFO option in create modal', async () => {
     const user = userEvent.setup();
     render(<SQSPage showNotification={jest.fn()} />);
     await waitFor(() => screen.getByText('my-queue'));
     await user.click(screen.getByText('Create queue'));
     expect(screen.getByText('FIFO Queue')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
   });
 
   test('peeks messages and shows message view', async () => {
@@ -56,7 +55,6 @@ describe('SQSPage', () => {
     await waitFor(() => screen.getByText('my-queue'));
     await user.click(screen.getAllByText('Peek')[0]);
     await waitFor(() => {
-      // Should show the queue detail view
       expect(screen.getByText('Send message')).toBeInTheDocument();
     });
   });
@@ -89,7 +87,7 @@ describe('SQSPage', () => {
     await user.click(screen.getAllByText('Peek')[0]);
     await waitFor(() => screen.getByText('Send message'));
     await user.click(screen.getByText('Send message'));
-    await user.type(screen.getByPlaceholderText(/Message body/), '{"test":true}');
+    await user.type(screen.getByPlaceholderText(/Message body/i), 'hello world');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => {
       expect(showNotification).toHaveBeenCalledWith('Message sent');
@@ -101,8 +99,8 @@ describe('SQSPage', () => {
     render(<SQSPage showNotification={jest.fn()} />);
     await waitFor(() => screen.getByText('my-queue'));
     await user.click(screen.getAllByText('Peek')[0]);
-    await waitFor(() => screen.getByText('← Queues'));
-    await user.click(screen.getByText('← Queues'));
+    await waitFor(() => screen.getByText(/Queues/));
+    await user.click(screen.getByText(/Queues/));
     await waitFor(() => {
       expect(screen.getByText('SQS Queues')).toBeInTheDocument();
     });

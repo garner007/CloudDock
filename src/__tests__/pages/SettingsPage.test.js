@@ -44,33 +44,34 @@ describe('SettingsPage', () => {
 
     expect(localStorage.getItem('ls_endpoint')).toBe('http://localhost:4510');
     expect(showNotification).toHaveBeenCalledWith(
-      expect.stringContaining('saved'), expect.anything()
+      expect.stringContaining('saved')
     );
   });
 
-  test('preset buttons update endpoint field', async () => {
-    const user = userEvent.setup();
+  test('backend selector cards are shown', () => {
     render(<SettingsPage showNotification={jest.fn()} health={null} />);
-    await user.click(screen.getByText('LocalStack (Docker)'));
-    expect(screen.getByDisplayValue('http://localstack:4566')).toBeInTheDocument();
+    expect(screen.getByText('Backend Emulator')).toBeInTheDocument();
+    expect(screen.getByText('LocalStack')).toBeInTheDocument();
   });
 
   test('test connection shows success when LocalStack responds', async () => {
     const user = userEvent.setup();
     render(<SettingsPage showNotification={jest.fn()} health={null} />);
-    await user.click(screen.getByText('Test Connection'));
+    const testBtn = screen.getByRole('button', { name: /test connection/i });
+    await user.click(testBtn);
     await waitFor(() => {
-      expect(screen.getByText('✓ Connection successful')).toBeInTheDocument();
+      // The success result shows "✓ Connected — detected: <backend>"
+      expect(screen.getByText(/✓ Connected/)).toBeInTheDocument();
     });
   });
 
-  test('test connection shows service list on success', async () => {
+  test('test connection shows detected backend on success', async () => {
     const user = userEvent.setup();
     render(<SettingsPage showNotification={jest.fn()} health={null} />);
-    await user.click(screen.getByText('Test Connection'));
+    const testBtn = screen.getByRole('button', { name: /test connection/i });
+    await user.click(testBtn);
     await waitFor(() => {
-      expect(screen.getByText('s3')).toBeInTheDocument();
-      expect(screen.getByText('lambda')).toBeInTheDocument();
+      expect(screen.getByText(/detected/i)).toBeInTheDocument();
     });
   });
 
@@ -82,9 +83,10 @@ describe('SettingsPage', () => {
       )
     );
     render(<SettingsPage showNotification={jest.fn()} health={null} />);
-    await user.click(screen.getByText('Test Connection'));
+    const testBtn = screen.getByRole('button', { name: /test connection/i });
+    await user.click(testBtn);
     await waitFor(() => {
-      expect(screen.getByText('✕ Connection failed')).toBeInTheDocument();
+      expect(screen.getByText(/Could not connect|Connection failed/i)).toBeInTheDocument();
     });
   });
 
@@ -95,7 +97,7 @@ describe('SettingsPage', () => {
         health={{ status: 'connected', endpoint: 'http://localhost:4566' }}
       />
     );
-    expect(screen.getByText('Connected to LocalStack')).toBeInTheDocument();
+    expect(screen.getByText(/Connected to/)).toBeInTheDocument();
   });
 
   test('shows disconnected status banner when health is null', () => {

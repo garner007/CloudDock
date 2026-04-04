@@ -20,7 +20,7 @@ describe('Sidebar', () => {
     expect(screen.getByText('Compute')).toBeInTheDocument();
     expect(screen.getByText('Messaging')).toBeInTheDocument();
     expect(screen.getByText('Networking')).toBeInTheDocument();
-    expect(screen.getByText('Security & Auth')).toBeInTheDocument();
+    expect(screen.getByText('Security')).toBeInTheDocument();
     expect(screen.getByText('Management')).toBeInTheDocument();
   });
 
