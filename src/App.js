@@ -41,6 +41,11 @@ import { useDensity } from './hooks/useDensity';
 import { checkBackendHealth, BACKENDS } from './services/backends';
 import './App.css';
 
+function getServiceFromHash() {
+  const hash = window.location.hash.replace('#/', '').replace('#', '');
+  return hash || 'dashboard';
+}
+
 const PAGE_MAP = {
   s3: S3Page, dynamodb: DynamoDBPage, sqs: SQSPage, lambda: LambdaPage,
   sns: SNSPage, iam: IAMPage, cloudformation: CloudFormationPage,
@@ -55,7 +60,7 @@ const PAGE_MAP = {
 
 
 export default function App() {
-  const [currentService, setCurrentService] = useState('dashboard');
+  const [currentService, setCurrentService] = useState(getServiceFromHash);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [health, setHealth] = useState(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
@@ -67,6 +72,7 @@ export default function App() {
   const navigateTo = useCallback((id) => {
     setCurrentService(id);
     setPageTrail([]);
+    window.location.hash = `#/${id}`;
   }, []);
 
   // Theme and density
@@ -101,6 +107,24 @@ export default function App() {
     window.__navigateTo = (id) => navigateTo(id);
     return () => { delete window.__navigateTo; };
   }, [navigateTo]);
+
+  // Listen for hash changes (back/forward buttons)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const id = getServiceFromHash();
+      setCurrentService(id);
+      setPageTrail([]);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Set initial hash if none present
+  useEffect(() => {
+    if (!window.location.hash) {
+      window.location.hash = '#/dashboard';
+    }
+  }, []);
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -142,6 +166,7 @@ export default function App() {
   return (
     <SettingsProvider>
     <div className="app-shell">
+      <a href="#main-content" className="skip-to-content">Skip to content</a>
       <TopBar
         health={health}
         checkingHealth={checkingHealth}
@@ -161,7 +186,7 @@ export default function App() {
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(v => !v)}
         />
-        <main className="app-content">
+        <main className="app-content" id="main-content">
           <ErrorBoundary serviceName={currentService} key={currentService}>
             {renderPage()}
           </ErrorBoundary>
