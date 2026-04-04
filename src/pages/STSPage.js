@@ -3,6 +3,7 @@ import { Ticket, RefreshCw, Copy } from 'lucide-react';
 import { STSClient, GetCallerIdentityCommand, GetSessionTokenCommand } from '@aws-sdk/client-sts';
 import { getConfig } from '../services/awsClients';
 import { useAwsResource } from '../hooks/useAwsResource';
+import SecretValue from '../components/SecretValue';
 
 export default function STSPage({ showNotification }) {
   const [sessionToken, setSessionToken] = useState(null);
@@ -79,8 +80,14 @@ export default function STSPage({ showNotification }) {
           {sessionToken ? (
             <>
               <Field label="Access Key ID" value={sessionToken.AccessKeyId} mono />
-              <Field label="Secret Access Key" value={sessionToken.SecretAccessKey} mono />
-              <Field label="Session Token" value={sessionToken.SessionToken} mono />
+              <div style={{ marginBottom: 16 }}>
+                <div className="form-label" style={{ marginBottom: 4 }}>Secret Access Key</div>
+                <SecretValue value={sessionToken.SecretAccessKey} onCopy={() => showNotification('Copied to clipboard')} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <div className="form-label" style={{ marginBottom: 4 }}>Session Token</div>
+                <SecretValue value={sessionToken.SessionToken} onCopy={() => showNotification('Copied to clipboard')} />
+              </div>
               <Field label="Expiration" value={sessionToken.Expiration ? new Date(sessionToken.Expiration).toLocaleString() : '-'} />
               <div style={{ marginTop: 16 }}>
                 <div className="form-label" style={{ marginBottom: 6 }}>Export as env vars</div>
