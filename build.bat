@@ -1,12 +1,12 @@
 @echo off
 REM ─────────────────────────────────────────────────────────────────────────────
-REM LocalStack Desktop — Windows Build Script
+REM CloudDock — Windows Build Script
 REM Usage: build.bat [win|all]
 REM ─────────────────────────────────────────────────────────────────────────────
 
 echo.
 echo  ╔════════════════════════════════════════╗
-echo  ║     LocalStack Desktop — Build         ║
+echo  ║     CloudDock — Build                  ║
 echo  ╚════════════════════════════════════════╝
 echo.
 

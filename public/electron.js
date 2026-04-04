@@ -1,5 +1,5 @@
 /**
- * LocalStack Desktop — Electron Main Process
+ * CloudDock — Electron Main Process
  *
  * SINGLE SOURCE OF TRUTH for the Electron main process.
  * `public/electron.js` is copied into `build/` by CRA during `npm run build:react`,
@@ -21,12 +21,12 @@ if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 let mainWindow = null;
 let tray       = null;
 
-app.setName('LocalStack Desktop');
+app.setName('CloudDock');
 if (process.platform === 'darwin') {
   app.setAboutPanelOptions({
-    applicationName: 'LocalStack Desktop',
+    applicationName: 'CloudDock',
     applicationVersion: app.getVersion(),
-    copyright: 'Open Source — LocalStack Desktop',
+    copyright: 'Open Source — CloudDock',
   });
 }
 
@@ -126,7 +126,7 @@ function createWindow() {
       webSecurity:      false,
     },
     icon:  iconPath || undefined,
-    title: 'LocalStack Desktop',
+    title: 'CloudDock',
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -269,9 +269,9 @@ function createTray() {
   if (!iconPath) return;
   try {
     tray = new Tray(iconPath);
-    tray.setToolTip('LocalStack Desktop');
+    tray.setToolTip('CloudDock');
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Show LocalStack Desktop', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
+      { label: 'Show CloudDock', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
     ]));

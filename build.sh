@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# LocalStack Desktop — Build Script
+# CloudDock — Build Script
 # Usage: ./build.sh [mac|win|linux|all] [--skip-icons]
 # ─────────────────────────────────────────────────────────────────────────────
 set -e
@@ -19,7 +19,7 @@ err()     { echo -e "${RED}✗ $*${NC}"; exit 1; }
 
 echo ""
 echo -e "${CYAN}╔════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║     LocalStack Desktop — Build         ║${NC}"
+echo -e "${CYAN}║     CloudDock — Build                  ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════╝${NC}"
 echo ""
 

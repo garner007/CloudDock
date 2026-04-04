@@ -1,8 +1,8 @@
 {
-  "name": "localstack-desktop",
+  "name": "clouddock",
   "version": "1.0.0",
-  "description": "AWS Console-style desktop GUI for LocalStack Pro",
-  "author": "LocalStack Desktop Contributors",
+  "description": "AWS Console-style desktop GUI for cloud service emulators",
+  "author": "CloudDock Contributors",
   "license": "MIT",
   "main": "public/electron.js",
   "homepage": "./",
@@ -70,9 +70,9 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "cloud.localstack.desktop",
-    "productName": "LocalStack Desktop",
-    "copyright": "Copyright © 2024 LocalStack Desktop Contributors",
+    "appId": "cloud.clouddock.app",
+    "productName": "CloudDock",
+    "copyright": "Copyright © 2024 CloudDock Contributors",
     "directories": {
       "output": "dist",
       "buildResources": "assets"
@@ -116,7 +116,7 @@
       "identity": null
     },
     "dmg": {
-      "title": "LocalStack Desktop",
+      "title": "CloudDock",
       "backgroundColor": "#0d1117",
       "window": {
         "width": 540,
@@ -160,7 +160,7 @@
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "LocalStack Desktop",
+      "shortcutName": "CloudDock",
       "deleteAppDataOnUninstall": false
     },
     "linux": {
@@ -186,10 +186,10 @@
         }
       ],
       "category": "Development",
-      "description": "AWS Console-style desktop GUI for LocalStack",
+      "description": "AWS Console-style desktop GUI for cloud service emulators",
       "desktop": {
-        "Name": "LocalStack Desktop",
-        "Comment": "AWS Console GUI for LocalStack",
+        "Name": "CloudDock",
+        "Comment": "AWS Console GUI for cloud emulators",
         "Categories": "Development;Utility;"
       }
     },
