@@ -1,45 +1,53 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, RefreshCw, Plus, Trash2, X, Eye } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { ShieldCheck, RefreshCw, Plus, Trash2, Eye } from 'lucide-react';
 import { getConfig } from '../services/awsClients';
+import { useAwsResource } from '../hooks/useAwsResource';
+import DataTable from '../components/DataTable';
+import StatusBadge from '../components/StatusBadge';
+import CreateModal from '../components/CreateModal';
+import DetailPanel from '../components/DetailPanel';
 import ConfirmDialog, { useConfirm } from '../components/ConfirmDialog';
 
+const STATUS_COLORS = {
+  ISSUED: 'green', PENDING_VALIDATION: 'yellow',
+  EXPIRED: 'red', REVOKED: 'red', FAILED: 'red',
+};
+
+const CREATE_FIELDS = [
+  { name: 'domain', label: 'Domain Name', required: true, placeholder: 'example.com' },
+  { name: 'altNames', label: 'Subject Alternative Names (comma-separated)', placeholder: 'www.example.com, api.example.com' },
+  { name: 'validation', label: 'Validation Method', type: 'select', options: ['DNS', 'EMAIL'], defaultValue: 'DNS' },
+];
+
 export default function ACMPage({ showNotification }) {
-  const [certs, setCerts] = useState([]);
-  const { confirmDialog, requestConfirm } = useConfirm();
-  const [loading, setLoading] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
-  const [newCert, setNewCert] = useState({ domain: '', altNames: '', validation: 'DNS' });
   const [selectedCert, setSelectedCert] = useState(null);
+  const { confirmDialog, requestConfirm } = useConfirm();
 
   const loadCerts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { ACMClient, ListCertificatesCommand, DescribeCertificateCommand } = await import('@aws-sdk/client-acm');
-      const client = new ACMClient(getConfig());
-      const res = await client.send(new ListCertificatesCommand({ MaxItems: 100 }));
-      const summaries = res.CertificateSummaryList || [];
-      setCerts(summaries);
-    } catch (e) { showNotification(e.message, 'error'); }
-    finally { setLoading(false); }
-  }, [showNotification]);
+    const { ACMClient, ListCertificatesCommand } = await import('@aws-sdk/client-acm');
+    const client = new ACMClient(getConfig());
+    const res = await client.send(new ListCertificatesCommand({ MaxItems: 100 }));
+    return res.CertificateSummaryList || [];
+  }, []);
 
-  useEffect(() => { loadCerts(); }, [loadCerts]);
+  const { items: certs, loading, refresh } = useAwsResource(loadCerts, {
+    onError: (e) => showNotification(e.message, 'error'),
+  });
 
-  const requestCert = async () => {
-    if (!newCert.domain) return;
+  const requestCert = async (values) => {
     try {
       const { ACMClient, RequestCertificateCommand } = await import('@aws-sdk/client-acm');
       const client = new ACMClient(getConfig());
-      const alts = newCert.altNames.split(',').map(s => s.trim()).filter(Boolean);
+      const alts = values.altNames.split(',').map(s => s.trim()).filter(Boolean);
       await client.send(new RequestCertificateCommand({
-        DomainName: newCert.domain,
-        ValidationMethod: newCert.validation,
-        SubjectAlternativeNames: alts.length > 0 ? [newCert.domain, ...alts] : undefined,
+        DomainName: values.domain,
+        ValidationMethod: values.validation,
+        SubjectAlternativeNames: alts.length > 0 ? [values.domain, ...alts] : undefined,
       }));
-      showNotification(`Certificate requested for ${newCert.domain}`);
+      showNotification(`Certificate requested for ${values.domain}`);
       setShowRequest(false);
-      setNewCert({ domain: '', altNames: '', validation: 'DNS' });
-      loadCerts();
+      refresh();
     } catch (e) { showNotification(e.message, 'error'); }
   };
 
@@ -50,12 +58,12 @@ export default function ACMPage({ showNotification }) {
       confirmLabel: 'Delete',
       onConfirm: async () => {
         try {
-        const { ACMClient, DeleteCertificateCommand } = await import('@aws-sdk/client-acm');
-        const client = new ACMClient(getConfig());
-        await client.send(new DeleteCertificateCommand({ CertificateArn: arn }));
-        showNotification('Certificate deleted'); loadCerts();
+          const { ACMClient, DeleteCertificateCommand } = await import('@aws-sdk/client-acm');
+          const client = new ACMClient(getConfig());
+          await client.send(new DeleteCertificateCommand({ CertificateArn: arn }));
+          showNotification('Certificate deleted');
+          refresh();
         } catch (e) { showNotification(e.message, 'error'); }
-
       },
     });
   };
@@ -69,10 +77,14 @@ export default function ACMPage({ showNotification }) {
     } catch (e) { showNotification(e.message, 'error'); }
   };
 
-  const statusColor = (s) => ({
-    ISSUED: 'badge-green', PENDING_VALIDATION: 'badge-yellow',
-    EXPIRED: 'badge-red', REVOKED: 'badge-red', FAILED: 'badge-red',
-  }[s] || 'badge-gray');
+  const columns = [
+    { key: 'DomainName', label: 'Domain name', render: (v) => <span style={{ fontWeight: 500 }}>{v}</span> },
+    { key: 'Status', label: 'Status', render: (v) => <StatusBadge status={v} colorMap={STATUS_COLORS} /> },
+    { key: 'Type', label: 'Type', render: (v) => <span className="badge badge-gray">{v || 'AMAZON_ISSUED'}</span> },
+    { key: 'CertificateArn', label: 'ARN', mono: true, render: (v) => (
+      <span style={{ fontSize: 10, color: 'var(--aws-text-muted)' }}>{v?.slice(-24)}</span>
+    )},
+  ];
 
   return (
     <div className="fade-in">
@@ -82,90 +94,43 @@ export default function ACMPage({ showNotification }) {
           <div className="page-subtitle">{certs.length} certificate{certs.length !== 1 ? 's' : ''}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={loadCerts}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
+          <button className="btn btn-secondary btn-sm" onClick={refresh}><RefreshCw size={13} className={loading ? 'spin' : ''} /></button>
           <button className="btn btn-primary" onClick={() => setShowRequest(true)}><Plus size={14} /> Request certificate</button>
         </div>
       </div>
 
-      <div className="card">
-        {loading ? <div className="loading-center"><RefreshCw size={16} className="spin" /></div>
-        : certs.length === 0 ? (
-          <div className="empty-state"><ShieldCheck size={40} /><h3>No certificates</h3>
-            <p>Request SSL/TLS certificates for your domains.</p>
-            <button className="btn btn-primary" onClick={() => setShowRequest(true)}><Plus size={14} /> Request certificate</button>
+      <DataTable
+        columns={columns}
+        data={certs}
+        loading={loading}
+        rowKey="CertificateArn"
+        emptyIcon={ShieldCheck}
+        emptyTitle="No certificates"
+        emptyDescription="Request SSL/TLS certificates for your domains."
+        actions={(row) => (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => describeCert(row.CertificateArn)}><Eye size={11} /></button>
+            <button className="btn btn-danger btn-sm" onClick={() => deleteCert(row.CertificateArn)}><Trash2 size={11} /></button>
           </div>
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Domain name</th><th>Status</th><th>Type</th><th>ARN</th><th></th></tr></thead>
-            <tbody>
-              {certs.map(c => (
-                <tr key={c.CertificateArn}>
-                  <td style={{ fontWeight: 500 }}>{c.DomainName}</td>
-                  <td><span className={`badge ${statusColor(c.Status)}`}>{c.Status}</span></td>
-                  <td><span className="badge badge-gray">{c.Type || 'AMAZON_ISSUED'}</span></td>
-                  <td className="mono" style={{ fontSize: 10, color: 'var(--aws-text-muted)' }}>{c.CertificateArn?.slice(-24)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => describeCert(c.CertificateArn)}><Eye size={11} /></button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteCert(c.CertificateArn)}><Trash2 size={11} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
-      </div>
+      />
 
-      {showRequest && (
-        <div className="modal-overlay" onClick={() => setShowRequest(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Request Certificate</span>
-              <button className="close-btn" onClick={() => setShowRequest(false)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Domain Name</label>
-                <input className="input" style={{ width: '100%' }} value={newCert.domain}
-                  onChange={e => setNewCert({ ...newCert, domain: e.target.value })} placeholder="example.com" autoFocus />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Subject Alternative Names (comma-separated)</label>
-                <input className="input" style={{ width: '100%' }} value={newCert.altNames}
-                  onChange={e => setNewCert({ ...newCert, altNames: e.target.value })} placeholder="www.example.com, api.example.com" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Validation Method</label>
-                <select className="input" style={{ width: '100%' }} value={newCert.validation}
-                  onChange={e => setNewCert({ ...newCert, validation: e.target.value })}>
-                  <option value="DNS">DNS</option>
-                  <option value="EMAIL">Email</option>
-                </select>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowRequest(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={requestCert}>Request</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateModal
+        title="Request Certificate"
+        open={showRequest}
+        onClose={() => setShowRequest(false)}
+        onSubmit={requestCert}
+        fields={CREATE_FIELDS}
+        submitLabel="Request"
+      />
 
       {selectedCert && (
-        <div className="modal-overlay" onClick={() => setSelectedCert(null)}>
-          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">{selectedCert.DomainName}</span>
-              <button className="close-btn" onClick={() => setSelectedCert(null)}><X size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <pre className="detail-json">{JSON.stringify(selectedCert, null, 2)}</pre>
-            </div>
-          </div>
-        </div>
+        <DetailPanel title={selectedCert.DomainName} onClose={() => setSelectedCert(null)}>
+          <pre className="detail-json">{JSON.stringify(selectedCert, null, 2)}</pre>
+        </DetailPanel>
       )}
-          {confirmDialog}
+
+      {confirmDialog}
     </div>
   );
 }
