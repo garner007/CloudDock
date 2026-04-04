@@ -76,7 +76,7 @@ export default function TopBar({
         <button className="palette-trigger" onClick={onOpenPalette} title="Open command palette (⌘K)">
           <Search size={13} color="var(--aws-text-muted)" />
           <span>Search services…</span>
-          <kbd>⌘K</kbd>
+          <kbd className="kbd-hint">⌘K</kbd>
         </button>
       </div>
 
