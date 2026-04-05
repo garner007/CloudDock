@@ -39,22 +39,6 @@ jobs:
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
-    services:
-      localstack:
-        image: localstack/localstack:latest
-        ports:
-          - 4566:4566
-        env:
-          DEBUG: 0
-          AWS_DEFAULT_REGION: us-east-1
-          AWS_ACCESS_KEY_ID: test
-          AWS_SECRET_ACCESS_KEY: test
-        options: >-
-          --health-cmd "wget -q -O /dev/null http://localhost:4566/_localstack/health || exit 1"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 20
-          --health-start-period 60s
 
     steps:
       - uses: actions/checkout@v4
@@ -68,18 +52,31 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Start LocalStack
+        run: |
+          docker run -d \
+            --name localstack \
+            -p 4566:4566 \
+            -e DEBUG=0 \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            -e AWS_ACCESS_KEY_ID=test \
+            -e AWS_SECRET_ACCESS_KEY=test \
+            localstack/localstack:3.7
+          echo "Container started, waiting for health..."
+
       - name: Wait for LocalStack to be ready
         run: |
-          echo "Waiting for LocalStack..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             if curl -sf http://localhost:4566/_localstack/health > /dev/null 2>&1; then
               echo "LocalStack is ready!"
+              curl -s http://localhost:4566/_localstack/health | head -c 200
               exit 0
             fi
-            echo "  attempt $i/30..."
+            echo "  attempt $i/40..."
             sleep 5
           done
-          echo "LocalStack failed to start"
+          echo "LocalStack failed to start. Container logs:"
+          docker logs localstack
           exit 1
 
       - name: Run integration tests
@@ -92,4 +89,8 @@ jobs:
 
       - name: Print LocalStack logs on failure
         if: failure()
-        run: docker logs $(docker ps -q --filter "ancestor=localstack/localstack") 2>/dev/null || true
+        run: docker logs localstack 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f localstack 2>/dev/null || true
