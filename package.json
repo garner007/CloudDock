@@ -20,8 +20,8 @@
     "test": "react-scripts test --watchAll=false",
     "test:watch": "react-scripts test",
     "test:coverage": "react-scripts test --watchAll=false --coverage --coverageReporters=text --coverageReporters=lcov",
-    "test:integration": "jest --config jest.integration.config.js",
-    "test:integration:watch": "jest --config jest.integration.config.js --watch",
+    "test:integration": "NODE_OPTIONS='--experimental-vm-modules' jest --config jest.integration.config.js",
+    "test:integration:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --config jest.integration.config.js --watch",
     "test:all": "npm run test && npm run test:integration"
   },
   "dependencies": {
