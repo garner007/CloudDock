@@ -26,24 +26,31 @@ Built with Electron + React + AWS SDK v3. Supports LocalStack, Moto, Floci, Mini
 | Security | IAM, Cognito, Secrets Manager, KMS, STS |
 | Management | CloudWatch Logs, CloudFormation, Parameter Store, Step Functions |
 
-## Install
-
-### Build from Source
+## Build from Source
 
 **Requirements:** Node.js 18+
 
+### macOS / Linux
+
 ```bash
-npm install --legacy-peer-deps
-npm start                    # dev mode (Electron + React)
-npm run dist                 # build installer for current platform
+chmod +x build.sh
+./build.sh          # current platform
+./build.sh mac      # .dmg (Intel + Apple Silicon)
+./build.sh linux    # .AppImage + .deb + .rpm
+./build.sh win      # .exe (needs Wine on non-Windows)
 ```
 
-### Platform-specific builds
+### Windows
+
+```batch
+build.bat
+```
+
+### Development Mode (no build needed)
 
 ```bash
-./build.sh mac     # .dmg (Intel + Apple Silicon)
-./build.sh linux   # .AppImage + .deb + .rpm
-./build.sh win     # .exe (needs Wine on non-Windows)
+npm install --legacy-peer-deps
+npm start
 ```
 
 ## Default Connection
