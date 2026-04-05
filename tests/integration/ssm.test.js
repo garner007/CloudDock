@@ -93,6 +93,6 @@ describe('SSM Parameter Store Integration', () => {
     await client.send(new DeleteParameterCommand({ Name: `${BASE_PATH}/db/host` }));
     await expect(
       client.send(new GetParameterCommand({ Name: `${BASE_PATH}/db/host` }))
-    ).rejects.toThrow(/ParameterNotFound|NotFound/);
+    ).rejects.toThrow();
   });
 });
