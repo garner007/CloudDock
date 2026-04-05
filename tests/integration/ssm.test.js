@@ -91,11 +91,8 @@ describe('SSM Parameter Store Integration', () => {
 
   test('deletes a parameter', async () => {
     await client.send(new DeleteParameterCommand({ Name: `${BASE_PATH}/db/host` }));
-    try {
-      await client.send(new GetParameterCommand({ Name: `${BASE_PATH}/db/host` }));
-      fail('Should have thrown ParameterNotFound');
-    } catch (e) {
-      expect(e.name).toMatch(/ParameterNotFound|NotFound/);
-    }
+    await expect(
+      client.send(new GetParameterCommand({ Name: `${BASE_PATH}/db/host` }))
+    ).rejects.toThrow(/ParameterNotFound|NotFound/);
   });
 });
