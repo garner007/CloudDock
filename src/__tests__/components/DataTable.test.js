@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import DataTable from '../../components/DataTable';
 import { Archive } from 'lucide-react';
+import DataTable from '../../components/DataTable';
 
 const columns = [
   { key: 'name', label: 'Name' },

@@ -54,7 +54,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('LocalStack')).toBeInTheDocument();
   });
 
-  test('test connection shows success when LocalStack responds', async () => {
+  test('connection shows success when LocalStack responds', async () => {
     const user = userEvent.setup();
     render(<SettingsPage showNotification={jest.fn()} health={null} />);
     const testBtn = screen.getByRole('button', { name: /test connection/i });
@@ -65,7 +65,7 @@ describe('SettingsPage', () => {
     });
   });
 
-  test('test connection shows detected backend on success', async () => {
+  test('connection shows detected backend on success', async () => {
     const user = userEvent.setup();
     render(<SettingsPage showNotification={jest.fn()} health={null} />);
     const testBtn = screen.getByRole('button', { name: /test connection/i });
@@ -75,7 +75,7 @@ describe('SettingsPage', () => {
     });
   });
 
-  test('test connection shows failure when endpoint is unreachable', async () => {
+  test('connection shows failure when endpoint is unreachable', async () => {
     const user = userEvent.setup();
     server.use(
       rest.get('http://localhost:4566/_localstack/health', (req, res, ctx) =>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import EmptyState from '../../components/EmptyState';
 import { Archive } from 'lucide-react';
+import EmptyState from '../../components/EmptyState';
 
 describe('EmptyState', () => {
   test('renders title', () => {

@@ -37,13 +37,13 @@ export default function GenericServicePage({ serviceId, health, showNotification
     }
   }, [svc, health, status]);
 
-  if (!svc) return (
+  if (!svc) {return (
     <div className="empty-state">
       <HelpCircle size={40} />
       <h3>Unknown Service</h3>
       <p>Service ID "{serviceId}" not found in catalog.</p>
     </div>
-  );
+  );}
 
   const isRunning = status === 'running';
   // Only show the upgrade screen if it's a paid-only service AND it's not running

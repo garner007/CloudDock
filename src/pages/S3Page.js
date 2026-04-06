@@ -343,7 +343,7 @@ export default function S3Page({ showNotification }) {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Name</th><th>Size</th><th>Last Modified</th><th>Storage Class</th><th></th>
+                    <th>Name</th><th>Size</th><th>Last Modified</th><th>Storage Class</th><th />
                   </tr>
                 </thead>
                 <tbody>

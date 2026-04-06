@@ -161,7 +161,7 @@ export default function DynamoDBPage({ showNotification }) {
                   <thead>
                     <tr>
                       {cols.map(c => <th key={c}>{c}</th>)}
-                      <th></th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>

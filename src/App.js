@@ -6,7 +6,6 @@ import Breadcrumb from './components/Breadcrumb';
 import CommandPalette from './components/CommandPalette';
 import ErrorBoundary from './components/ErrorBoundary';
 import GenericServicePage from './components/GenericServicePage';
-
 import S3Page from './pages/S3Page';
 import DynamoDBPage from './pages/DynamoDBPage';
 import SQSPage from './pages/SQSPage';
@@ -34,7 +33,6 @@ import FirehosePage from './pages/FirehosePage';
 import STSPage from './pages/STSPage';
 import DashboardPage from './pages/DashboardPage';
 import SettingsPage from './pages/SettingsPage';
-
 import SERVICES from './services/catalog';
 import { useTheme } from './hooks/useTheme';
 import { useDensity } from './hooks/useDensity';
@@ -145,20 +143,20 @@ export default function App() {
 
   const renderPage = () => {
     if (currentService === 'dashboard')
-      return <DashboardPage health={health} showNotification={showNotification} onNavigate={navigateTo} />;
+      {return <DashboardPage health={health} showNotification={showNotification} onNavigate={navigateTo} />;}
     if (currentService === 'settings')
-      return <SettingsPage health={health} showNotification={showNotification}
+      {return <SettingsPage health={health} showNotification={showNotification}
                themePref={themePref} setTheme={setTheme}
-               density={density} setDensity={setDensity} />;
+               density={density} setDensity={setDensity} />;}
 
     const DedicatedPage = PAGE_MAP[currentService];
     if (DedicatedPage)
-      return <DedicatedPage health={health} showNotification={showNotification}
-               onNavigate={navigateTo} setPageTrail={setPageTrail} />;
+      {return <DedicatedPage health={health} showNotification={showNotification}
+               onNavigate={navigateTo} setPageTrail={setPageTrail} />;}
 
     const svc = SERVICES.find(s => s.id === currentService);
     if (svc)
-      return <GenericServicePage serviceId={currentService} health={health} showNotification={showNotification} />;
+      {return <GenericServicePage serviceId={currentService} health={health} showNotification={showNotification} />;}
 
     return <DashboardPage health={health} showNotification={showNotification} onNavigate={navigateTo} />;
   };

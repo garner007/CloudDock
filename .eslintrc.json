@@ -1,0 +1,50 @@
+{
+  "extends": [
+    "react-app",
+    "react-app/jest"
+  ],
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-var": "error",
+    "prefer-const": "warn",
+    "curly": ["warn", "multi-line"],
+    "react/jsx-no-duplicate-props": "error",
+    "react/jsx-no-undef": "error",
+    "react/no-direct-mutation-state": "error",
+    "react/self-closing-comp": "warn",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "jsx-a11y/alt-text": "warn",
+    "jsx-a11y/anchor-is-valid": "warn",
+    "import/no-duplicates": "warn",
+    "import/order": ["warn", {
+      "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
+      "newlines-between": "never"
+    }]
+  },
+  "overrides": [
+    {
+      "files": ["src/**/*.test.js", "src/setupTests.js", "src/mocks/**/*.js"],
+      "rules": {
+        "no-console": "off",
+        "testing-library/no-node-access": "warn",
+        "testing-library/prefer-find-by": "warn",
+        "testing-library/no-wait-for-multiple-assertions": "warn",
+        "testing-library/no-container": "warn",
+        "testing-library/no-unnecessary-act": "warn"
+      }
+    },
+    {
+      "files": ["main.js", "preload.js", "scripts/**/*.js"],
+      "env": {
+        "node": true,
+        "browser": false
+      },
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
+}

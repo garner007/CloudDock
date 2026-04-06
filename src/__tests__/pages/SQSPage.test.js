@@ -28,7 +28,7 @@ describe('SQSPage', () => {
 
   test('shows type badges for queues', async () => {
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     const typeBadges = screen.getAllByText(/FIFO|Standard/);
     expect(typeBadges.length).toBeGreaterThan(0);
   });
@@ -36,7 +36,7 @@ describe('SQSPage', () => {
   test('opens create queue modal', async () => {
     const user = userEvent.setup();
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     await user.click(screen.getByText('Create queue'));
     expect(screen.getByText('Create SQS Queue')).toBeInTheDocument();
   });
@@ -44,7 +44,7 @@ describe('SQSPage', () => {
   test('has FIFO option in create modal', async () => {
     const user = userEvent.setup();
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     await user.click(screen.getByText('Create queue'));
     expect(screen.getByText('FIFO Queue')).toBeInTheDocument();
   });
@@ -52,7 +52,7 @@ describe('SQSPage', () => {
   test('peeks messages and shows message view', async () => {
     const user = userEvent.setup();
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     await user.click(screen.getAllByText('Peek')[0]);
     await waitFor(() => {
       expect(screen.getByText('Send message')).toBeInTheDocument();
@@ -62,7 +62,7 @@ describe('SQSPage', () => {
   test('shows peeked messages in queue view', async () => {
     const user = userEvent.setup();
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     await user.click(screen.getAllByText('Peek')[0]);
     await waitFor(() => {
       expect(screen.getByText(/\{"hello":"world"\}/)).toBeInTheDocument();
@@ -72,9 +72,9 @@ describe('SQSPage', () => {
   test('opens send message modal', async () => {
     const user = userEvent.setup();
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     await user.click(screen.getAllByText('Peek')[0]);
-    await waitFor(() => screen.getByText('Send message'));
+    await screen.findByText('Send message');
     await user.click(screen.getByText('Send message'));
     expect(screen.getByText(/Send Message to/)).toBeInTheDocument();
   });
@@ -83,9 +83,9 @@ describe('SQSPage', () => {
     const user = userEvent.setup();
     const showNotification = jest.fn();
     render(<SQSPage showNotification={showNotification} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     await user.click(screen.getAllByText('Peek')[0]);
-    await waitFor(() => screen.getByText('Send message'));
+    await screen.findByText('Send message');
     await user.click(screen.getByText('Send message'));
     await user.type(screen.getByPlaceholderText(/Message body/i), 'hello world');
     await user.click(screen.getByRole('button', { name: 'Send' }));
@@ -97,9 +97,9 @@ describe('SQSPage', () => {
   test('back button returns to queue list', async () => {
     const user = userEvent.setup();
     render(<SQSPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-queue'));
+    await screen.findByText('my-queue');
     await user.click(screen.getAllByText('Peek')[0]);
-    await waitFor(() => screen.getByText(/Queues/));
+    await screen.findByText(/Queues/);
     await user.click(screen.getByText(/Queues/));
     await waitFor(() => {
       expect(screen.getByText('SQS Queues')).toBeInTheDocument();
