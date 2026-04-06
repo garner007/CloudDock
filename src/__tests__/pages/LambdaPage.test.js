@@ -9,7 +9,7 @@ describe('LambdaPage', () => {
   test('renders page title and loads data', async () => {
     render(<LambdaPage showNotification={jest.fn()} />);
     expect(screen.getByText('Lambda Functions')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('my-function')).toBeInTheDocument());
+    await screen.findByText('my-function');
   });
 
   test('shows function list with runtime badges and count', async () => {
@@ -26,7 +26,7 @@ describe('LambdaPage', () => {
   test('opens invoke modal with function metadata', async () => {
     const user = userEvent.setup();
     render(<LambdaPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-function'));
+    await screen.findByText('my-function');
     await user.click(screen.getAllByText('Invoke')[0]);
     expect(screen.getByText('Invoke Payload (JSON)')).toBeInTheDocument();
     expect(screen.getAllByText('python3.11').length).toBeGreaterThan(0);
@@ -38,7 +38,7 @@ describe('LambdaPage', () => {
     const user = userEvent.setup();
     const showNotification = jest.fn();
     render(<LambdaPage showNotification={showNotification} />);
-    await waitFor(() => screen.getByText('my-function'));
+    await screen.findByText('my-function');
     await user.click(screen.getAllByText('Invoke')[0]);
     const invokeButtons = screen.getAllByRole('button', { name: /invoke/i });
     await user.click(invokeButtons[invokeButtons.length - 1]);

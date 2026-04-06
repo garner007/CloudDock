@@ -113,7 +113,7 @@ export default function IAMPage({ showNotification }) {
             </div>
           ) : (
             <table className="data-table">
-              <thead><tr><th>User name</th><th>User ID</th><th>ARN</th><th>Created</th><th></th></tr></thead>
+              <thead><tr><th>User name</th><th>User ID</th><th>ARN</th><th>Created</th><th /></tr></thead>
               <tbody>
                 {users.map(u => (
                   <tr key={u.UserId}>
@@ -134,7 +134,7 @@ export default function IAMPage({ showNotification }) {
             <div className="empty-state"><Users size={40} /><h3>No roles</h3></div>
           ) : (
             <table className="data-table">
-              <thead><tr><th>Role name</th><th>Role ID</th><th>Created</th><th>Description</th><th></th></tr></thead>
+              <thead><tr><th>Role name</th><th>Role ID</th><th>Created</th><th>Description</th><th /></tr></thead>
               <tbody>
                 {roles.map(r => (
                   <tr key={r.RoleId}>

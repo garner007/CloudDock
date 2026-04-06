@@ -29,7 +29,7 @@ describe('S3Page — bucket list', () => {
   test('opens create bucket modal', async () => {
     const user = userEvent.setup();
     render(<S3Page showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-test-bucket'));
+    await screen.findByText('my-test-bucket');
     await user.click(screen.getByText('Create bucket'));
     expect(screen.getByText('Create S3 Bucket')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('my-bucket')).toBeInTheDocument();
@@ -38,7 +38,7 @@ describe('S3Page — bucket list', () => {
   test('closes create bucket modal on Cancel', async () => {
     const user = userEvent.setup();
     render(<S3Page showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-test-bucket'));
+    await screen.findByText('my-test-bucket');
     await user.click(screen.getByText('Create bucket'));
     await user.click(screen.getByText('Cancel'));
     expect(screen.queryByText('Create S3 Bucket')).not.toBeInTheDocument();
@@ -48,7 +48,7 @@ describe('S3Page — bucket list', () => {
     const user = userEvent.setup();
     const showNotification = jest.fn();
     render(<S3Page showNotification={showNotification} />);
-    await waitFor(() => screen.getByText('my-test-bucket'));
+    await screen.findByText('my-test-bucket');
     await user.click(screen.getByText('Create bucket'));
     await user.type(screen.getByPlaceholderText('my-bucket'), 'new-bucket');
     await user.click(screen.getByRole('button', { name: 'Create Bucket' }));
@@ -60,7 +60,7 @@ describe('S3Page — bucket list', () => {
   test('calls confirm dialog when deleting a bucket', async () => {
     const user = userEvent.setup();
     render(<S3Page showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-test-bucket'));
+    await screen.findByText('my-test-bucket');
     const trashButtons = document.querySelectorAll('.btn-danger');
     expect(trashButtons.length).toBeGreaterThan(0);
     await user.click(trashButtons[0]);
@@ -72,7 +72,7 @@ describe('S3Page — object browser', () => {
   test('navigates into a bucket when Browse is clicked', async () => {
     const user = userEvent.setup();
     render(<S3Page showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-test-bucket'));
+    await screen.findByText('my-test-bucket');
     await user.click(screen.getAllByText('Browse')[0]);
     await waitFor(() => {
       expect(screen.getByText(/my-test-bucket/)).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe('S3Page — object browser', () => {
   test('shows files in bucket', async () => {
     const user = userEvent.setup();
     render(<S3Page showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-test-bucket'));
+    await screen.findByText('my-test-bucket');
     await user.click(screen.getAllByText('Browse')[0]);
     await waitFor(() => {
       expect(screen.getByText('hello.txt')).toBeInTheDocument();
@@ -92,9 +92,9 @@ describe('S3Page — object browser', () => {
   test('back button returns to bucket list', async () => {
     const user = userEvent.setup();
     render(<S3Page showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('my-test-bucket'));
+    await screen.findByText('my-test-bucket');
     await user.click(screen.getAllByText('Browse')[0]);
-    await waitFor(() => screen.getByText('hello.txt'));
+    await screen.findByText('hello.txt');
     await user.click(screen.getByText('All Buckets'));
     await waitFor(() => {
       expect(screen.getByText('my-test-bucket')).toBeInTheDocument();

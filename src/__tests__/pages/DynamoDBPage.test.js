@@ -22,7 +22,7 @@ describe('DynamoDBPage — table list', () => {
 
   test('shows ACTIVE badge for each table', async () => {
     render(<DynamoDBPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     const activeBadges = screen.getAllByText(/ACTIVE/);
     expect(activeBadges.length).toBeGreaterThan(0);
   });
@@ -37,7 +37,7 @@ describe('DynamoDBPage — table list', () => {
   test('opens create table modal', async () => {
     const user = userEvent.setup();
     render(<DynamoDBPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     await user.click(screen.getByText('Create table'));
     expect(screen.getByText('Create DynamoDB Table')).toBeInTheDocument();
   });
@@ -45,7 +45,7 @@ describe('DynamoDBPage — table list', () => {
   test('create table modal has required fields', async () => {
     const user = userEvent.setup();
     render(<DynamoDBPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     await user.click(screen.getByText('Create table'));
     expect(screen.getByPlaceholderText('my-table')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('id')).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe('DynamoDBPage — table list', () => {
     const user = userEvent.setup();
     const showNotification = jest.fn();
     render(<DynamoDBPage showNotification={showNotification} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     await user.click(screen.getByText('Create table'));
     await user.click(screen.getByRole('button', { name: 'Create Table' }));
     expect(showNotification).not.toHaveBeenCalled();
@@ -66,7 +66,7 @@ describe('DynamoDBPage — item browser', () => {
   test('navigates to table view when Browse is clicked', async () => {
     const user = userEvent.setup();
     render(<DynamoDBPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     await user.click(screen.getAllByText('Browse')[0]);
     await waitFor(() => {
       expect(screen.getByText(/DynamoDB/)).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('DynamoDBPage — item browser', () => {
   test('shows scanned items in table view', async () => {
     const user = userEvent.setup();
     render(<DynamoDBPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     await user.click(screen.getAllByText('Browse')[0]);
     await waitFor(() => {
       expect(screen.getByText('user-1')).toBeInTheDocument();
@@ -87,9 +87,9 @@ describe('DynamoDBPage — item browser', () => {
   test('shows Overview tab with table stats', async () => {
     const user = userEvent.setup();
     render(<DynamoDBPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     await user.click(screen.getAllByText('Browse')[0]);
-    await waitFor(() => screen.getByText('Overview'));
+    await screen.findByText('Overview');
     await user.click(screen.getByText('Overview'));
     await waitFor(() => {
       expect(screen.getByText('Item Count')).toBeInTheDocument();
@@ -100,9 +100,9 @@ describe('DynamoDBPage — item browser', () => {
   test('back button returns to table list', async () => {
     const user = userEvent.setup();
     render(<DynamoDBPage showNotification={jest.fn()} />);
-    await waitFor(() => screen.getByText('users'));
+    await screen.findByText('users');
     await user.click(screen.getAllByText('Browse')[0]);
-    await waitFor(() => screen.getByText(/Tables/));
+    await screen.findByText(/Tables/);
     await user.click(screen.getByText(/Tables/));
     await waitFor(() => {
       expect(screen.getByText('DynamoDB Tables')).toBeInTheDocument();
